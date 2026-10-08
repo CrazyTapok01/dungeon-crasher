@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    background: radial-gradient(ellipse at top, #1a0b2e 0%, #0a0413 50%, #000 100%);
+    color: #e9d5ff;
+    font-family: 'Georgia', 'Times New Roman', serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-8px) rotate(-2deg); }
+  40% { transform: translateX(8px) rotate(2deg); }
+  60% { transform: translateX(-6px) rotate(-1deg); }
+  80% { transform: translateX(6px) rotate(1deg); }
+}
+.shake { animation: shake 0.35s ease-in-out; }
+
+@keyframes hit-flash {
+  0% { filter: brightness(2.5) saturate(0); }
+  100% { filter: none; }
+}
+.hit-flash { animation: hit-flash 0.3s ease-out; }
+/* Если у элемента оба класса, `animation` второго стирал первый — запускаем обе анимации вместе */
+.shake.hit-flash { animation: shake 0.35s ease-in-out, hit-flash 0.3s ease-out; }
+
+@keyframes pop {
+  0% { transform: translateY(0) scale(0.5); opacity: 0; }
+  30% { transform: translateY(-10px) scale(1.2); opacity: 1; }
+  100% { transform: translateY(-70px) scale(1); opacity: 0; }
+}
+.pop { animation: pop 1s ease-out forwards; }
+
+@keyframes slash {
+  0% { transform: translateX(-120%) rotate(-20deg) scaleX(0.5); opacity: 0; }
+  40% { transform: translateX(0) rotate(0) scaleX(1); opacity: 1; }
+  100% { transform: translateX(120%) rotate(20deg) scaleX(0.5); opacity: 0; }
+}
+.slash { animation: slash 0.35s ease-out; }
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+.float { animation: float 2s ease-in-out infinite; }
+
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(251, 191, 36, 0.4), 0 0 40px rgba(251, 191, 36, 0.2); }
+  50% { box-shadow: 0 0 30px rgba(251, 191, 36, 0.8), 0 0 60px rgba(251, 191, 36, 0.4); }
+}
+.glow-boss { animation: glow 2s ease-in-out infinite; }
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-in { animation: fade-in 0.25s ease-out; }
+
+.pixelated {
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+}
+
+.scroll-log::-webkit-scrollbar { width: 8px; }
+.scroll-log::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); border-radius: 4px; }
+.scroll-log::-webkit-scrollbar-thumb { background: #6b21a8; border-radius: 4px; }
+
+.text-stroke {
+  text-shadow:
+    -1px -1px 0 #000, 1px -1px 0 #000,
+    -1px 1px 0 #000, 1px 1px 0 #000,
+    0 0 8px rgba(0,0,0,0.8);
+}
+
+.btn-fantasy {
+  background: linear-gradient(180deg, #7c2d12 0%, #431407 100%);
+  border: 2px solid #b45309;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.15), 0 4px 0 #1c0a03, 0 0 15px rgba(249,115,22,0.2);
+  transition: all 0.15s;
+}
+.btn-fantasy:hover:not(:disabled) {
+  background: linear-gradient(180deg, #9a3412 0%, #7c2d12 100%);
+  transform: translateY(-1px);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 5px 0 #1c0a03, 0 0 25px rgba(249,115,22,0.4);
+}
+.btn-fantasy:active:not(:disabled) {
+  transform: translateY(3px);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.1), 0 1px 0 #1c0a03;
+}
+.btn-fantasy:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.panel {
+  background: linear-gradient(180deg, rgba(30, 15, 50, 0.9) 0%, rgba(15, 8, 25, 0.95) 100%);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  box-shadow: inset 0 0 30px rgba(88, 28, 135, 0.2), 0 0 20px rgba(0,0,0,0.5);
+}
