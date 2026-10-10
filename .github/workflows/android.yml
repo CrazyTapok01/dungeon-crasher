@@ -1,0 +1,68 @@
+name: Build Android APK
+
+# Запускается вручную (вкладка Actions → Build Android APK → Run workflow)
+# и автоматически при публикации тега вида v1.0.0
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build web game
+        run: npm run build
+
+      # Папку android/ создаём, только если её ещё нет в репозитории
+      - name: Add Android platform
+        run: |
+          if [ ! -d android ]; then
+            npx cap add android
+            node scripts/patch-android.mjs
+          fi
+
+      # Иконка и заставка из папки assets/. Если шаг не удался — APK всё равно соберётся со стандартной иконкой
+      - name: Generate icons and splash
+        continue-on-error: true
+        run: npx capacitor-assets generate --android --assetPath assets
+
+      - name: Sync web build into Android project
+        run: npx cap sync android
+
+      - name: Build debug APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: dungeon-crasher-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

@@ -1,0 +1,15 @@
+{
+  "appId": "com.dungeoncrasher.game",
+  "appName": "Крушители подземелий",
+  "webDir": "dist",
+  "backgroundColor": "#0a0413",
+  "android": {
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "css",
+      "style": "DARK"
+    }
+  }
+}

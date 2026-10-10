@@ -1,68 +1,35 @@
-import type { HitEvent, Monster } from '../types';
+import type { Monster, MonsterAi } from '../types';
+import { TRAITS } from '../gameData';
+import StatBar from './StatBar';
 
 interface Props {
   monster: Monster;
   hp: number;
-  hit: HitEvent | null; // последний удар героя по монстру
+  ai: MonsterAi;
 }
 
-export default function MonsterPanel({ monster, hp, hit }: Props) {
-  const hpPct = Math.min(100, Math.max(0, (hp / monster.hp) * 100));
-  const isHurt = hit?.kind === 'damage';
+/** Плашка монстра над сценой: имя, здоровье, особенности и состояние. */
+export default function MonsterPanel({ monster, hp, ai }: Props) {
+  const trait = monster.trait ? TRAITS[monster.trait] : null;
+  const fill = monster.isBoss
+    ? 'linear-gradient(180deg,#fde047 0%,#f59e0b 55%,#b45309 100%)'
+    : monster.isElite
+      ? 'linear-gradient(180deg,#e9d5ff 0%,#a855f7 55%,#6b21a8 100%)'
+      : 'linear-gradient(180deg,#fca5a5 0%,#dc2626 55%,#7f1d1d 100%)';
 
   return (
-    <div className="flex-1 relative">
-      <div className="text-center">
-        <div className={`text-xs font-bold uppercase tracking-wider ${monster.isBoss ? 'text-amber-400 animate-pulse' : 'text-red-300'}`}>
-          {monster.isBoss ? '👑 БОСС' : 'Враг'}
-        </div>
-        <div className={`font-black text-lg ${monster.isBoss ? 'text-amber-300' : 'text-red-200'}`}>
-          {monster.name}
-        </div>
+    <div className="hud hud-right">
+      <div className="hud-title">
+        <span className={`hud-name ${monster.isBoss ? 'text-amber-300' : monster.isElite ? 'text-purple-300' : ''}`}>
+          {monster.isBoss ? '👑 ' : monster.isElite ? '⭐ ' : ''}{monster.name}
+        </span>
       </div>
-
-      {/* key = id удара: каждый новый удар пересоздаёт блок и заново запускает анимацию */}
-      <div key={hit?.id ?? 'calm'} className={`relative inline-block w-full text-center ${isHurt ? 'shake hit-flash' : ''}`}>
-        <div className={`relative mx-auto w-32 h-32 md:w-40 md:h-40 flex items-center justify-center text-7xl md:text-8xl select-none ${monster.isBoss ? 'glow-boss rounded-full' : ''}`}>
-          <span className={isHurt ? '' : 'float'} style={{
-            filter: monster.isBoss
-              ? 'drop-shadow(0 0 20px #f59e0b)'
-              : 'drop-shadow(0 0 15px rgba(239,68,68,0.6))'
-          }}>{monster.emoji}</span>
-          {isHurt && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="slash text-6xl">⚔️</div>
-            </div>
-          )}
-          {hit && (
-            <div className={`absolute pop font-black text-3xl text-stroke z-10 ${hit.crit ? 'text-yellow-300 text-4xl' : 'text-red-400'}`}
-                 style={{ left: '50%', top: '30%', transform: 'translateX(-50%)' }}>
-              {hit.text}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="mt-2 space-y-1">
-        <div>
-          <div className="flex justify-between text-xs mb-0.5">
-            <span className="text-red-300">❤️ HP</span>
-            <span className="text-red-200 font-bold">{hp}/{monster.hp}</span>
-          </div>
-          <div className="h-4 bg-black/60 rounded-full border border-red-900 overflow-hidden relative">
-            <div className="h-full transition-all duration-200"
-                 style={{
-                   width: `${hpPct}%`,
-                   background: monster.isBoss
-                     ? 'linear-gradient(90deg, #b45309, #f59e0b, #fde047)'
-                     : 'linear-gradient(90deg, #7f1d1d, #dc2626, #f87171)'
-                 }} />
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-2 text-xs text-red-300/90 text-center">
-        ⚔️ {monster.atk} · 🛡️ {monster.def} · 💰 {monster.gold} · ⭐ {monster.xp}
+      <StatBar value={hp} max={monster.hp} height={15} fill={fill} label={`${hp} / ${monster.hp}`} />
+      <div className="hud-chips justify-end">
+        {ai.charging && <span className="chip chip-red chip-pulse">⚠️ замах!</span>}
+        {ai.enraged && <span className="chip chip-red">😡 ярость</span>}
+        {trait && <span className="chip chip-purple" title={trait.desc}>{trait.emoji} {trait.name}</span>}
+        {monster.isElite && <span className="chip chip-gold">элита</span>}
       </div>
     </div>
   );

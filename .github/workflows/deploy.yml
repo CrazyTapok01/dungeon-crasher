@@ -24,11 +24,14 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
+      # npm install (а не ci): в package.json добавлены пакеты Capacitor,
+      # а package-lock.json обновится только после первого `npm install` на вашем компьютере.
+      # После этого можно вернуть `npm ci`.
       - name: Install dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Build project
         run: npm run build
