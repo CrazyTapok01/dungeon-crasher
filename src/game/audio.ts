@@ -199,7 +199,8 @@ export function playForEvent(e: GameEvent): void {
     case 'floor_cleared': play('floor'); break;
     case 'hero_died':    play('death'); break;
     case 'rebirth':      play('rebirth'); break;
-    case 'achievement':  play('achievement'); break;
+    case 'achievement':
+    case 'perk':         play('achievement'); break;
     case 'ui':           play(e.kind === 'sell' ? 'coin' : 'buy'); break;
   }
 }

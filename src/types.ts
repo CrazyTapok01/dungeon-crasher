@@ -49,7 +49,7 @@ export interface MonsterAi {
 
 export type SkillId =
   | 'power' | 'vitality' | 'armor' | 'crit' | 'critdmg' | 'dodge' | 'vamp'
-  | 'regen' | 'fortune' | 'wisdom';
+  | 'regen' | 'fortune' | 'wisdom' | 'fury';
 
 /** Описание навыка — неизменяемые данные (лежат в gameData.ts). */
 export interface SkillDef {
@@ -61,18 +61,21 @@ export interface SkillDef {
   baseCost: number;
   costMult: number;
   effect: (level: number) => string;
+  unlockRebirths?: number; // навык открывается после N перерождений
+  noPerkLevels?: boolean;  // бонус «Расширенного обучения» на него не действует (у него есть жёсткий потолок)
 }
 
 /** Навык + текущий уровень — то, что рисует SkillsPanel. */
 export interface Skill extends SkillDef {
   level: number;
+  locked: boolean; // ещё не открыт перерождениями
 }
 
 /** Сохраняются только уровни навыков (функции в JSON не превращаются). */
 export type SkillLevels = Record<SkillId, number>;
 
 /** Активные способности — кнопки в бою с перезарядкой. */
-export type AbilityId = 'strike' | 'heal' | 'shield';
+export type AbilityId = 'strike' | 'heal' | 'shield' | 'rage';
 
 export interface AbilityDef {
   id: AbilityId;
@@ -81,6 +84,7 @@ export interface AbilityDef {
   desc: string;
   cooldownTicks: number; // перезарядка в «тиках» боя (1 тик = COMBAT_TICK_MS)
   unlockLevel: number;   // с какого уровня героя доступна
+  unlockRebirths?: number; // и сколько перерождений нужно совершить
 }
 
 /** Перезарядка каждой способности, в тиках (0 = готова). */
@@ -91,6 +95,7 @@ export interface HeroStatus {
   poisonTurns: number;   // сколько ходов монстра ещё действует яд
   poisonDmg: number;     // урон яда за ход
   shieldCharges: number; // сколько ударов ещё смягчит «Щит»
+  rageCharges: number;   // сколько ударов героя ещё усилит «Берсерк»
 }
 
 /** «Голые» параметры героя, без предметов и навыков. */
@@ -197,7 +202,9 @@ export type GameEventBody =
   | { type: 'hero_died' }
   | { type: 'respawn' }
   | { type: 'rebirth'; souls: number }
-  | { type: 'achievement'; id: string }
+  // У этих двух событий своё поле key: поле id занято порядковым номером события (GameEvent.id)
+  | { type: 'achievement'; key: string }
+  | { type: 'perk'; key: string }
   | { type: 'ui'; kind: 'buy' | 'equip' | 'sell' };
 
 export type GameEvent = GameEventBody & { id: number };

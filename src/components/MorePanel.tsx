@@ -1,5 +1,6 @@
 import type { HeroState, Meta } from '../types';
-import { ACHIEVEMENTS, PRESTIGE, soulsForFloor } from '../gameData';
+import { setGfxSetting, useGfx, type GfxSetting } from '../game/perf';
+import { ACHIEVEMENTS, PERKS, PRESTIGE, soulsForFloor } from '../gameData';
 
 interface Props {
   hero: HeroState;
@@ -12,8 +13,13 @@ interface Props {
   onToggleAuto: () => void;
 }
 
+const GFX_LABEL: Record<GfxSetting, string> = { auto: 'Авто', high: 'Высокая', low: 'Низкая' };
+const NEXT_GFX: Record<GfxSetting, GfxSetting> = { auto: 'high', high: 'low', low: 'auto' };
+
 export default function MorePanel({ hero, meta, muted, autoAbilities, onRebirth, onReset, onToggleSound, onToggleAuto }: Props) {
-  const gain = soulsForFloor(hero.floor);
+  const gfx = useGfx();
+  const gain = soulsForFloor(hero.floor, meta.rebirths);
+  const nextPerk = PERKS.find(p => p.rebirths > meta.rebirths);
   const canRebirth = gain > 0;
   const done = new Set(meta.achievements);
 
@@ -42,6 +48,44 @@ export default function MorePanel({ hero, meta, muted, autoAbilities, onRebirth,
         </button>
       </div>
 
+      {/* ── путь перерождений ── */}
+      <div className="panel rounded-xl p-3 border-purple-600/40">
+        <h2 className="text-lg font-black text-purple-200 mb-0.5 text-center text-stroke">🌟 Путь перерождений</h2>
+        <p className="text-center text-xs text-purple-300/80 mb-2 leading-snug">
+          Каждое перерождение приближает новые постоянные награды. Они остаются навсегда.
+        </p>
+        {nextPerk ? (
+          <div className="mb-3">
+            <div className="flex justify-between text-[11px] text-purple-300 mb-1">
+              <span>Следующая награда — после {nextPerk.rebirths}-го перерождения</span>
+              <span className="font-bold text-amber-300">{meta.rebirths}/{nextPerk.rebirths}</span>
+            </div>
+            <div className="h-2 bg-black/50 rounded-full overflow-hidden border border-purple-900/60">
+              <div className="h-full bg-gradient-to-r from-purple-500 to-amber-300" style={{ width: `${Math.min(100, (meta.rebirths / nextPerk.rebirths) * 100)}%` }} />
+            </div>
+          </div>
+        ) : (
+          <div className="mb-3 text-center text-xs text-amber-300 font-bold">🏆 Все награды пути открыты!</div>
+        )}
+        <div className="space-y-1.5">
+          {PERKS.map(p => {
+            const ok = meta.rebirths >= p.rebirths;
+            return (
+              <div key={p.id} className={`rounded-lg p-2 flex items-center gap-2.5 border ${ok ? 'bg-purple-900/40 border-purple-400/60' : 'bg-black/30 border-purple-900/50'}`}>
+                <div className={`text-2xl w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${ok ? 'bg-purple-500/20' : 'bg-black/40 grayscale opacity-60'}`}>{p.emoji}</div>
+                <div className="flex-1 min-w-0">
+                  <div className={`text-sm font-bold ${ok ? 'text-purple-100' : 'text-purple-300/80'}`}>{p.name}</div>
+                  <div className="text-[11px] text-purple-300/80 leading-tight">{p.desc}</div>
+                </div>
+                <div className={`text-[11px] shrink-0 font-bold text-right ${ok ? 'text-green-300' : 'text-amber-300'}`}>
+                  {ok ? '✓' : <>🔒<br />{p.rebirths}</>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* ── настройки ── */}
       <div className="panel rounded-xl p-3">
         <h2 className="text-lg font-black text-amber-300 mb-2 text-center text-stroke">⚙️ Настройки</h2>
@@ -49,6 +93,15 @@ export default function MorePanel({ hero, meta, muted, autoAbilities, onRebirth,
           <button onClick={onToggleSound} className="btn-fantasy py-2.5 rounded-lg text-sm font-bold">{muted ? '🔇 Звук выкл.' : '🔊 Звук вкл.'}</button>
           <button onClick={onToggleAuto} className="btn-fantasy py-2.5 rounded-lg text-sm font-bold">{autoAbilities ? '⚡ Авто-навыки: да' : '✋ Авто-навыки: нет'}</button>
         </div>
+        <button
+          onClick={() => setGfxSetting(NEXT_GFX[gfx.setting])}
+          className="btn-fantasy w-full mt-2 py-2.5 rounded-lg text-sm font-bold"
+        >
+          🎨 Графика: {GFX_LABEL[gfx.setting]}{gfx.setting === 'auto' ? ` (сейчас: ${gfx.low ? 'низкая' : 'высокая'})` : ''}
+        </button>
+        <p className="text-[11px] text-purple-300/70 text-center mt-1 leading-tight">
+          Если игра тормозит — выберите «Низкая»: меньше эффектов, заметно легче для телефона.
+        </p>
         <button onClick={onReset} className="w-full mt-2 py-2 rounded-lg text-xs font-bold text-red-300 border border-red-900/60 bg-red-950/30">
           ↻ Сбросить весь прогресс
         </button>

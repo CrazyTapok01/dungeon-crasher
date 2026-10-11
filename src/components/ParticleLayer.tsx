@@ -1,5 +1,6 @@
 import { useEffect, useImperativeHandle, useRef, type Ref } from 'react';
 import type { AmbientKind } from '../gameData';
+import { reportSlowFrames, useGfx } from '../game/perf';
 
 /*
  * СЛОЙ ЧАСТИЦ — маленький свой «движок» на <canvas>.
@@ -22,10 +23,30 @@ interface Particle {
   life: number; max: number; size: number; grow: number;
   color: string; shape: Shape; gravity: number; drag: number;
   rot: number; vr: number; additive: boolean;
+  burst: boolean; // true — эффект от события (удар, лут), false — фоновые огоньки
 }
 
-const MAX_PARTICLES = 450;
+const MAX_HIGH = 260;
+const MAX_LOW = 90;
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
+
+// Дым рисуем готовой картинкой-«пятном» (одной на цвет), а не строим градиент заново на каждой частице в каждом кадре
+const smokeSprites = new Map<string, HTMLCanvasElement>();
+function smokeSprite(colorPrefix: string): HTMLCanvasElement {
+  let c = smokeSprites.get(colorPrefix);
+  if (!c) {
+    c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const g = c.getContext('2d')!;
+    const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, `${colorPrefix}1)`);
+    gr.addColorStop(1, `${colorPrefix}0)`);
+    g.fillStyle = gr;
+    g.fillRect(0, 0, 64, 64);
+    smokeSprites.set(colorPrefix, c);
+  }
+  return c;
+}
 
 interface Props {
   ambient: AmbientKind;
@@ -41,18 +62,21 @@ export default function ParticleLayer({ ambient, lightColor, ref }: Props) {
   ambientRef.current = { ambient, lightColor };
 
   const reduced = useRef(false);
+  const { low } = useGfx();
+  const lowRef = useRef(low);
+  lowRef.current = low;
 
   const add = (p: Partial<Particle> & Pick<Particle, 'x' | 'y' | 'shape' | 'color'>) => {
-    if (parts.current.length >= MAX_PARTICLES) parts.current.shift();
+    if (parts.current.length >= (lowRef.current ? MAX_LOW : MAX_HIGH)) parts.current.shift();
     parts.current.push({
       vx: 0, vy: 0, life: 0, max: 0.8, size: 4, grow: 0, gravity: 0, drag: 0.98,
-      rot: 0, vr: 0, additive: true, ...p,
+      rot: 0, vr: 0, additive: true, burst: true, ...p,
     });
   };
 
   useImperativeHandle(ref, () => ({
     emit(kind, x, y, opts = {}) {
-      const k = reduced.current ? 0.4 : 1;
+      const k = lowRef.current ? 0.35 : reduced.current ? 0.4 : 1;
       const n = (count: number) => Math.max(1, Math.round(count * k));
 
       switch (kind) {
@@ -141,7 +165,7 @@ export default function ParticleLayer({ ambient, lightColor, ref }: Props) {
           break;
       }
     },
-  }));
+  }), []);
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -150,7 +174,7 @@ export default function ParticleLayer({ ambient, lightColor, ref }: Props) {
 
     const resize = () => {
       const r = canvas.getBoundingClientRect();
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      const dpr = Math.min(lowRef.current ? 1 : 1.5, window.devicePixelRatio || 1);
       size.current = { w: r.width, h: r.height, dpr };
       canvas.width = Math.round(r.width * dpr);
       canvas.height = Math.round(r.height * dpr);
@@ -161,30 +185,36 @@ export default function ParticleLayer({ ambient, lightColor, ref }: Props) {
 
     let raf = 0;
     let last = performance.now();
+    let lastDraw = 0;
     let spawnAcc = 0;
+    // Монитор: если кадры стабильно идут медленнее ~40 FPS, режим «Авто» переключается на «Низкую»
+    const mountedAt = performance.now();
+    let winStart = mountedAt;
+    let winFrames = 0;
+    let strikes = 0;
 
     const ambientSpawn = (dt: number) => {
       const { w, h } = size.current;
       const { ambient: kind, lightColor: light } = ambientRef.current;
-      const rate = (reduced.current ? 3 : 9) * (w / 380); // частиц в секунду
+      const rate = (lowRef.current ? 2 : reduced.current ? 3 : 7) * (w / 380); // фоновых частиц в секунду
       spawnAcc += dt * rate;
       while (spawnAcc >= 1) {
         spawnAcc -= 1;
         switch (kind) {
           case 'ember':
-            add({ x: rand(0, w), y: h * rand(0.6, 1), shape: 'dot', color: `rgba(${light},`, vx: rand(-8, 8), vy: rand(-45, -18), max: rand(2, 4), size: rand(1.2, 2.6), drag: 1 });
+            add({ x: rand(0, w), y: h * rand(0.6, 1), shape: 'dot', color: `rgba(${light},`, vx: rand(-8, 8), vy: rand(-45, -18), max: rand(2, 4), size: rand(1.2, 2.6), drag: 1, burst: false, additive: false });
             break;
           case 'lava':
-            add({ x: rand(0, w), y: h * rand(0.7, 1), shape: 'dot', color: `rgba(${rand(0, 1) > 0.5 ? '255,160,60' : light},`, vx: rand(-14, 14), vy: rand(-80, -30), max: rand(1.5, 3), size: rand(1.5, 3), drag: 1 });
+            add({ x: rand(0, w), y: h * rand(0.7, 1), shape: 'dot', color: `rgba(${rand(0, 1) > 0.5 ? '255,160,60' : light},`, vx: rand(-14, 14), vy: rand(-80, -30), max: rand(1.5, 3), size: rand(1.5, 3), drag: 1, burst: false, additive: false });
             break;
           case 'soul':
-            add({ x: rand(0, w), y: h * rand(0.5, 0.95), shape: 'dot', color: `rgba(${light},`, vx: rand(-14, 14), vy: rand(-30, -12), max: rand(3, 5), size: rand(2, 4), drag: 1 });
+            add({ x: rand(0, w), y: h * rand(0.5, 0.95), shape: 'dot', color: `rgba(${light},`, vx: rand(-14, 14), vy: rand(-30, -12), max: rand(3, 5), size: rand(2, 4), drag: 1, burst: false, additive: false });
             break;
           case 'snow':
-            add({ x: rand(0, w), y: -6, shape: 'dot', color: 'rgba(235,248,255,', vx: rand(-20, 6), vy: rand(24, 55), max: rand(5, 8), size: rand(1.2, 3), drag: 1 });
+            add({ x: rand(0, w), y: -6, shape: 'dot', color: 'rgba(235,248,255,', vx: rand(-20, 6), vy: rand(24, 55), max: rand(5, 8), size: rand(1.2, 3), drag: 1, burst: false, additive: false });
             break;
           case 'void':
-            add({ x: rand(0, w), y: rand(0, h), shape: 'dot', color: `rgba(${light},`, vx: rand(-6, 6), vy: rand(-12, 12), max: rand(2, 4), size: rand(1, 2.6), drag: 1 });
+            add({ x: rand(0, w), y: rand(0, h), shape: 'dot', color: `rgba(${light},`, vx: rand(-6, 6), vy: rand(-12, 12), max: rand(2, 4), size: rand(1, 2.6), drag: 1, burst: false, additive: false });
             break;
         }
       }
@@ -208,13 +238,10 @@ export default function ParticleLayer({ ambient, lightColor, ref }: Props) {
           ctx.lineWidth = 2 + 3 * alpha;
           ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.stroke();
           break;
-        case 'smoke': {
-          const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
-          g.addColorStop(0, col); g.addColorStop(1, 'rgba(0,0,0,0)');
-          ctx.fillStyle = g;
-          ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+        case 'smoke':
+          ctx.globalAlpha = 0.45 * Math.min(1, alpha * 1.4);
+          ctx.drawImage(smokeSprite(p.color), p.x - p.size, p.y - p.size, p.size * 2, p.size * 2);
           break;
-        }
         case 'star': {
           ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
           ctx.beginPath();
@@ -250,6 +277,25 @@ export default function ParticleLayer({ ambient, lightColor, ref }: Props) {
     };
 
     const frame = (now: number) => {
+      raf = requestAnimationFrame(frame);
+
+      winFrames++;
+      const elapsed = now - winStart;
+      if (elapsed >= 2000) {
+        // окно длиннее 3.5 с — игра была свёрнута, такое измерение не считаем
+        if (elapsed < 3500 && now - mountedAt > 4000 && !document.hidden) {
+          const fps = (winFrames * 1000) / elapsed;
+          strikes = fps < 40 ? strikes + 1 : 0;
+          if (strikes >= 2) reportSlowFrames();
+        }
+        winStart = now;
+        winFrames = 0;
+      }
+
+      // Пока на сцене нет «взрывов» (ударов, лута), фон хватает 30 кадров в секунду
+      if (now - lastDraw < 33 && !parts.current.some(p => p.burst)) return;
+      lastDraw = now;
+
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       const { w, h, dpr } = size.current;
@@ -276,12 +322,11 @@ export default function ParticleLayer({ ambient, lightColor, ref }: Props) {
       }
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = 'source-over';
-      raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
 
     return () => { cancelAnimationFrame(raf); ro.disconnect(); };
-  }, []);
+  }, [low]);
 
   return <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none z-30" />;
 }

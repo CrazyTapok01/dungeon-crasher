@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { Monster, MonsterAi } from '../types';
 import { TRAITS } from '../gameData';
 import StatBar from './StatBar';
@@ -9,7 +10,7 @@ interface Props {
 }
 
 /** Плашка монстра над сценой: имя, здоровье, особенности и состояние. */
-export default function MonsterPanel({ monster, hp, ai }: Props) {
+function MonsterPanel({ monster, hp, ai }: Props) {
   const trait = monster.trait ? TRAITS[monster.trait] : null;
   const fill = monster.isBoss
     ? 'linear-gradient(180deg,#fde047 0%,#f59e0b 55%,#b45309 100%)'
@@ -34,3 +35,5 @@ export default function MonsterPanel({ monster, hp, ai }: Props) {
     </div>
   );
 }
+
+export default memo(MonsterPanel);

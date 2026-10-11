@@ -53,8 +53,12 @@ export const SHOP_UPGRADES: ShopUpgrade[] = [
 ];
 /** Каждая покупка улучшения дорожает на 22%. */
 export const UPGRADE_COST_GROWTH = 1.22;
-export function upgradeCost(up: ShopUpgrade, bought: number): number {
-  return Math.round(up.cost * Math.pow(UPGRADE_COST_GROWTH, bought));
+export function upgradeCost(up: ShopUpgrade, bought: number, rebirths = 0): number {
+  return Math.round(up.cost * Math.pow(UPGRADE_COST_GROWTH, bought) * upgradeDiscount(rebirths));
+}
+/** Сколько даёт одна покупка улучшения (с наградой «Мастер-кузнец»). */
+export function upgradeAmount(up: ShopUpgrade, rebirths = 0): number {
+  return Math.max(1, Math.round(up.amount * upgradeBoost(rebirths)));
 }
 export function emptyUpgradeCounts(): UpgradeCounts {
   return { atk: 0, def: 0, hp: 0 };
@@ -91,14 +95,16 @@ const BOSS_TRAITS: MonsterTrait[] = ['armored', 'regen', 'enrage', 'thorns'];
 export const STRIKE = { mult: 2.5, ignoreDef: 0.5 };
 export const HEAL_ABILITY = { frac: 0.3 };
 export const SHIELD = { charges: 3, reduction: 0.6 };
+export const RAGE = { charges: 4, mult: 1.6 };
 
 export const ABILITIES: AbilityDef[] = [
   { id: 'strike', name: 'Сокрушающий удар', emoji: '💥', desc: `Мгновенный удар ×${STRIKE.mult}, игнорирует половину брони`, cooldownTicks: 8,  unlockLevel: 1 },
   { id: 'shield', name: 'Щит',              emoji: '🛡️', desc: `Следующие ${SHIELD.charges} удара врага слабее на ${SHIELD.reduction * 100}%`,   cooldownTicks: 20, unlockLevel: 4 },
   { id: 'heal',   name: 'Исцеление',        emoji: '✨', desc: `Лечит ${HEAL_ABILITY.frac * 100}% макс. HP и снимает яд`,                       cooldownTicks: 26, unlockLevel: 7 },
+  { id: 'rage',   name: 'Берсерк',          emoji: '😡', desc: `Следующие ${RAGE.charges} удара героя сильнее на ${Math.round((RAGE.mult - 1) * 100)}%`, cooldownTicks: 24, unlockLevel: 1, unlockRebirths: 5 },
 ];
 export function emptyCooldowns(): Cooldowns {
-  return { strike: 0, shield: 0, heal: 0 };
+  return { strike: 0, shield: 0, heal: 0, rage: 0 };
 }
 export const abilityDef = (id: AbilityId): AbilityDef => ABILITIES.find(a => a.id === id)!;
 
@@ -110,11 +116,48 @@ export const PRESTIGE = {
   goldPerSoul: 0.02,    // +2% к золоту
   startGoldPerSoul: 10, // стартовое золото после перерождения
 };
-export function soulsForFloor(floor: number): number {
+export function soulsForFloor(floor: number, rebirths = 0): number {
   if (floor < PRESTIGE.minFloor) return 0;
-  return Math.max(1, Math.floor(Math.pow(floor, 1.45) / 2));
+  const base = Math.max(1, Math.floor(Math.pow(floor, 1.45) / 2));
+  return Math.max(1, Math.floor(base * soulHarvest(rebirths)));
 }
 export const soulMultiplier = (souls: number) => 1 + souls * PRESTIGE.atkHpPerSoul;
+
+// ── ПУТЬ ПЕРЕРОЖДЕНИЙ ────────────────────────────────────────────
+// Награды за количество совершённых перерождений. Они постоянные и переживают любое перерождение.
+// Здесь собраны и сами награды (для экрана «Ещё»), и функции, которые читает остальная игра.
+
+/** После скольких перерождений открывается каждая награда. */
+const REB = { train1: 1, haggle: 2, fury: 3, train2: 4, rage: 5, chest: 6, bag: 7, train3: 8, smith: 10, harvest: 12, phoenix: 15 } as const;
+
+/** Сколько уровней навыков максимум добавляет «Расширенное обучение» (I+II+III) — нужно для проверки сохранений. */
+export const MAX_PERK_LEVELS = 15;
+export const skillLevelBonus = (r: number) => (r >= REB.train1 ? 5 : 0) + (r >= REB.train2 ? 5 : 0) + (r >= REB.train3 ? 5 : 0);
+export const skillMaxLevel = (def: SkillDef, r: number) => def.maxLevel + (def.noPerkLevels ? 0 : skillLevelBonus(r));
+export const skillUnlocked = (def: SkillDef, r: number) => r >= (def.unlockRebirths ?? 0);
+export const abilityUnlocked = (a: AbilityDef, level: number, r: number) => level >= a.unlockLevel && r >= (a.unlockRebirths ?? 0);
+export const upgradeDiscount = (r: number) => (r >= REB.haggle ? 0.85 : 1);
+export const upgradeBoost = (r: number) => (r >= REB.smith ? 1.5 : 1);
+export const inventoryLimit = (r: number) => INVENTORY_LIMIT + (r >= REB.bag ? 20 : 0);
+export const chestMinRarity = (r: number): Rarity => (r >= REB.chest ? 'rare' : 'uncommon');
+export const soulHarvest = (r: number) => (r >= REB.harvest ? 1.25 : 1);
+export const deathGoldKept = (r: number) => (r >= REB.phoenix ? 1 : DEATH_GOLD_KEPT);
+
+export interface PerkDef { id: string; rebirths: number; emoji: string; name: string; desc: string }
+
+export const PERKS: PerkDef[] = [
+  { id: 'train1',  rebirths: REB.train1,  emoji: '📚', name: 'Расширенное обучение I',   desc: '+5 к максимальному уровню навыков (кроме крита, уклонения и вампиризма)' },
+  { id: 'haggle',  rebirths: REB.haggle,  emoji: '🤝', name: 'Торговая смекалка',         desc: 'Улучшения в лавке на 15% дешевле' },
+  { id: 'fury',    rebirths: REB.fury,    emoji: '🔥', name: 'Новый навык: Неистовство',  desc: 'Открывается навык «Неистовство»: +2% к итоговому урону за уровень' },
+  { id: 'train2',  rebirths: REB.train2,  emoji: '📖', name: 'Расширенное обучение II',  desc: 'Ещё +5 к максимальному уровню навыков' },
+  { id: 'rage',    rebirths: REB.rage,    emoji: '😡', name: 'Новая способность: Берсерк', desc: 'Четвёртая кнопка в бою: 4 удара подряд сильнее на 60%' },
+  { id: 'chest',   rebirths: REB.chest,   emoji: '🧰', name: 'Сундук мастера',            desc: 'Из сундуков сокровищ выпадают вещи не хуже «редких»' },
+  { id: 'bag',     rebirths: REB.bag,     emoji: '🎒', name: 'Просторная сумка',          desc: '+20 мест в сумке' },
+  { id: 'train3',  rebirths: REB.train3,  emoji: '🎓', name: 'Расширенное обучение III', desc: 'Ещё +5 к максимальному уровню навыков' },
+  { id: 'smith',   rebirths: REB.smith,   emoji: '⚒️', name: 'Мастер-кузнец',             desc: 'Улучшения в лавке дают на 50% больше за покупку' },
+  { id: 'harvest', rebirths: REB.harvest, emoji: '👻', name: 'Жатва душ',                 desc: '+25% душ при каждом перерождении' },
+  { id: 'phoenix', rebirths: REB.phoenix, emoji: '🔥', name: 'Феникс',                    desc: 'После смерти герой больше не теряет золото' },
+];
 
 // ── Офлайн-прогресс ──────────────────────────────────────────────
 
@@ -132,7 +175,7 @@ export const OFFLINE = {
 /** Сколько даёт один уровень навыка (используется и в расчёте, и в описании). */
 export const SKILL_BONUS: Record<SkillId, number> = {
   power: 3, vitality: 15, armor: 2, crit: 2, critdmg: 20, dodge: 2, vamp: 3,
-  regen: 1, fortune: 5, wisdom: 5,
+  regen: 1, fortune: 5, wisdom: 5, fury: 2,
 };
 const B = SKILL_BONUS;
 
@@ -140,17 +183,18 @@ export const SKILLS: SkillDef[] = [
   { id: 'power',    name: 'Сила',      emoji: '💪', desc: `+${B.power} к атаке за уровень`,           maxLevel: 50, baseCost: 50,  costMult: 1.35, effect: l => `+${l * B.power} к атаке` },
   { id: 'vitality', name: 'Живучесть', emoji: '❤️', desc: `+${B.vitality} к макс. HP за уровень`,     maxLevel: 50, baseCost: 60,  costMult: 1.35, effect: l => `+${l * B.vitality} HP` },
   { id: 'armor',    name: 'Стойкость', emoji: '🛡️', desc: `+${B.armor} к защите за уровень`,          maxLevel: 40, baseCost: 55,  costMult: 1.35, effect: l => `+${l * B.armor} защиты` },
-  { id: 'crit',     name: 'Критический удар', emoji: '⚡', desc: `+${B.crit}% шанс крита за уровень`,  maxLevel: 25, baseCost: 100, costMult: 1.45, effect: l => `${l * B.crit}% шанс крита` },
+  { id: 'crit',     name: 'Критический удар', emoji: '⚡', desc: `+${B.crit}% шанс крита за уровень`,  maxLevel: 25, baseCost: 100, costMult: 1.45, effect: l => `${l * B.crit}% шанс крита` , noPerkLevels: true },
   { id: 'critdmg',  name: 'Мощь крита', emoji: '💥', desc: `+${B.critdmg}% урона крита за уровень`,   maxLevel: 25, baseCost: 120, costMult: 1.45, effect: l => `+${l * B.critdmg}% крит. урона` },
-  { id: 'dodge',    name: 'Уклонение', emoji: '💨', desc: `+${B.dodge}% шанс уклонения за уровень`,   maxLevel: 20, baseCost: 150, costMult: 1.5,  effect: l => `${l * B.dodge}% уклонение` },
-  { id: 'vamp',     name: 'Вампиризм', emoji: '🩸', desc: `+${B.vamp}% кражи жизни за уровень`,       maxLevel: 15, baseCost: 250, costMult: 1.6,  effect: l => `${l * B.vamp}% вампиризм` },
+  { id: 'dodge',    name: 'Уклонение', emoji: '💨', desc: `+${B.dodge}% шанс уклонения за уровень`,   maxLevel: 20, baseCost: 150, costMult: 1.5,  effect: l => `${l * B.dodge}% уклонение` , noPerkLevels: true },
+  { id: 'vamp',     name: 'Вампиризм', emoji: '🩸', desc: `+${B.vamp}% кражи жизни за уровень`,       maxLevel: 15, baseCost: 250, costMult: 1.6,  effect: l => `${l * B.vamp}% вампиризм` , noPerkLevels: true },
   { id: 'regen',    name: 'Регенерация', emoji: '🌿', desc: `+${B.regen} HP за ход героя за уровень`, maxLevel: 30, baseCost: 90,  costMult: 1.4,  effect: l => `+${l * B.regen} HP за ход` },
   { id: 'fortune',  name: 'Золотоискатель', emoji: '🪙', desc: `+${B.fortune}% золота за уровень`,    maxLevel: 30, baseCost: 120, costMult: 1.42, effect: l => `+${l * B.fortune}% золота` },
   { id: 'wisdom',   name: 'Мудрость',  emoji: '📖', desc: `+${B.wisdom}% опыта за уровень`,           maxLevel: 30, baseCost: 120, costMult: 1.42, effect: l => `+${l * B.wisdom}% опыта` },
+  { id: 'fury',    name: 'Неистовство', emoji: '🔥', desc: `+${B.fury}% к итоговому урону за уровень`, maxLevel: 30, baseCost: 150, costMult: 1.4,  effect: l => `+${l * B.fury}% урона`, unlockRebirths: 3 },
 ];
 
 export function emptySkillLevels(): SkillLevels {
-  return { power: 0, vitality: 0, armor: 0, crit: 0, critdmg: 0, dodge: 0, vamp: 0, regen: 0, fortune: 0, wisdom: 0 };
+  return { power: 0, vitality: 0, armor: 0, crit: 0, critdmg: 0, dodge: 0, vamp: 0, regen: 0, fortune: 0, wisdom: 0, fury: 0 };
 }
 
 /** Цена следующего уровня навыка растёт по геометрической прогрессии. */
@@ -464,6 +508,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: 'phoenix',    name: 'Феникс',            emoji: '🔥', desc: 'Погибни 10 раз и вернись',      target: 10,    stat: c => c.meta.deaths,        reward: { gold: 300 } },
   { id: 'rich',       name: 'Золотая лихорадка', emoji: '💰', desc: 'Заработай 20 000 золота',       target: 20000, stat: c => c.meta.goldEarned,    reward: { souls: 2 } },
   { id: 'rebirth1',   name: 'Новая жизнь',       emoji: '👻', desc: 'Соверши первое перерождение',   target: 1,     stat: c => c.meta.rebirths,      reward: { souls: 3 } },
+  { id: 'rebirth5',   name: 'Вечный странник',   emoji: '🌀', desc: 'Соверши 5 перерождений',        target: 5,     stat: c => c.meta.rebirths,      reward: { souls: 5 } },
+  { id: 'rebirth10',  name: 'Бессмертный',       emoji: '♾️', desc: 'Соверши 10 перерождений',       target: 10,    stat: c => c.meta.rebirths,      reward: { souls: 10 } },
 ];
 
 export function emptyMeta(): Meta {

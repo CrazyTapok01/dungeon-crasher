@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useGame } from './hooks/useGame';
-import { ACHIEVEMENTS, PRESTIGE, SKILLS, itemScore, skillCost, soulsForFloor } from './gameData';
+import { ACHIEVEMENTS, PERKS, PRESTIGE, SKILLS, inventoryLimit, itemScore, skillCost, soulsForFloor } from './gameData';
 import { isMuted, play, setMuted, unlockAudio } from './game/audio';
 import BattleScene from './components/BattleScene';
 import AbilityBar from './components/AbilityBar';
@@ -40,11 +40,17 @@ export default function App() {
 
   // Всплывающая плашка при получении достижения
   useEffect(() => {
-    const ev = state.events.find(e => e.type === 'achievement');
-    if (!ev || ev.type !== 'achievement') return;
-    const a = ACHIEVEMENTS.find(x => x.id === ev.id);
-    if (!a) return;
-    setToast({ id: ev.id, text: `${a.emoji} ${a.name}` });
+    const ev = state.events.find(e => e.type === 'achievement' || e.type === 'perk');
+    if (!ev || (ev.type !== 'achievement' && ev.type !== 'perk')) return;
+    if (ev.type === 'perk') {
+      const p = PERKS.find(x => x.id === ev.key);
+      if (!p) return;
+      setToast({ id: ev.id, text: `🌟 Новая награда: ${p.emoji} ${p.name}` });
+    } else {
+      const a = ACHIEVEMENTS.find(x => x.id === ev.key);
+      if (!a) return;
+      setToast({ id: ev.id, text: `🏆 Достижение: ${a.emoji} ${a.name}` });
+    }
     const t = setTimeout(() => setToast(null), 3200);
     return () => clearTimeout(t);
   }, [state.events]);
@@ -59,7 +65,7 @@ export default function App() {
     hero: hero.gold >= cheapest,
     inventory: (['weapon', 'armor', 'amulet'] as const).some(slot =>
       state.inventory.some(i => i.slot === slot && (!state.equipped[slot] || itemScore(i) > itemScore(state.equipped[slot]!)))),
-    more: soulsForFloor(hero.floor) > 0 && hero.floor >= PRESTIGE.minFloor + 4,
+    more: soulsForFloor(hero.floor, state.meta.rebirths) > 0 && hero.floor >= PRESTIGE.minFloor + 4,
   };
 
   return (
@@ -85,7 +91,7 @@ export default function App() {
         <div className="mt-1.5 flex items-center gap-2 px-1">
           <span className="text-[11px] text-blue-300 font-bold shrink-0">⭐ {hero.level}</span>
           <div className="flex-1 h-1.5 bg-black/60 rounded-full overflow-hidden border border-blue-900/70">
-            <div className="h-full transition-all duration-300" style={{ width: `${Math.min(100, (hero.xp / hero.xpToNext) * 100)}%`, background: 'linear-gradient(90deg,#2563eb,#60a5fa)' }} />
+            <div className="h-full w-full transition-transform duration-300" style={{ transform: `translateX(${Math.min(100, (hero.xp / hero.xpToNext) * 100) - 100}%)`, background: 'linear-gradient(90deg,#2563eb,#60a5fa)' }} />
           </div>
           <span className="text-[10px] text-blue-300/80 shrink-0">{hero.xp}/{hero.xpToNext}</span>
         </div>
@@ -98,6 +104,7 @@ export default function App() {
             <BattleScene state={state} stats={stats} />
             <AbilityBar
               level={hero.level}
+              rebirths={state.meta.rebirths}
               cooldowns={state.cooldowns}
               auto={state.settings.autoAbilities}
               onUse={game.useAbility}
@@ -111,7 +118,7 @@ export default function App() {
         )}
         {tab === 'inventory' && (
           <InventoryPanel
-            inventory={state.inventory} equipped={state.equipped}
+            inventory={state.inventory} limit={inventoryLimit(state.meta.rebirths)} equipped={state.equipped}
             onEquip={game.equipItem} onSell={game.sellItem}
             onEquipBest={game.equipBest} onSellJunk={game.sellJunk}
           />
@@ -119,7 +126,7 @@ export default function App() {
         {tab === 'shop' && (
           <ShopPanel
             gold={hero.gold} floor={hero.floor} inventoryCount={state.inventory.length}
-            upgradeCounts={state.upgradeCounts} chestResult={state.chestResult}
+            upgradeCounts={state.upgradeCounts} chestResult={state.chestResult} rebirths={state.meta.rebirths}
             onBuyPotion={game.buyPotion} onBuyUpgrade={game.buyUpgrade} onBuyChest={game.buyChest}
           />
         )}
@@ -133,7 +140,7 @@ export default function App() {
       </main>
 
       {/* ── нижняя навигация ── */}
-      <nav className="shrink-0 grid grid-cols-5 gap-1 px-2 pt-1.5 border-t border-purple-900/60 bg-black/50 backdrop-blur"
+      <nav className="shrink-0 grid grid-cols-5 gap-1 px-2 pt-1.5 border-t border-purple-900/60 bg-black/80"
            style={{ paddingBottom: 'max(var(--sab), 6px)' }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => go(t.id)}
@@ -149,14 +156,14 @@ export default function App() {
       {toast && (
         <div key={toast.id} className="toast fixed left-1/2 z-[90] px-4 py-2 rounded-full bg-amber-900/95 border border-amber-400 text-amber-100 font-black text-sm shadow-lg"
              style={{ top: 'calc(var(--sat) + 10px)' }}>
-          🏆 Достижение: {toast.text}
+          {toast.text}
         </div>
       )}
       {state.offlineReport && <OfflineModal report={state.offlineReport} onClose={game.dismissOffline} />}
       {confirm === 'rebirth' && (
         <ConfirmModal
           title="👻 Переродиться?"
-          text={`Ты получишь ${soulsForFloor(hero.floor)} душ — они навсегда усилят героя.\nЭтаж, золото, навыки и вещи сбросятся.`}
+          text={`Ты получишь ${soulsForFloor(hero.floor, state.meta.rebirths)} душ — они навсегда усилят героя.\nЭтаж, золото, навыки и вещи сбросятся.`}
           confirmLabel="Переродиться"
           onCancel={() => setConfirm(null)}
           onConfirm={() => { setConfirm(null); setTab('combat'); game.rebirth(); }}

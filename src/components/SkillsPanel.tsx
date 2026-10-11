@@ -1,6 +1,8 @@
 import type { HeroState, HeroStats, Skill, SkillId } from '../types';
 import { PRESTIGE, skillCost } from '../gameData';
 
+const BASE_MAX = (s: Skill) => s.maxLevel; // уже с учётом перков
+
 interface Props {
   skills: Skill[];
   gold: number;
@@ -16,6 +18,7 @@ const TINT: Record<string, string> = {
   critdmg: 'from-orange-800/70 to-red-950/80', dodge: 'from-sky-800/70 to-cyan-950/80',
   vamp: 'from-rose-900/70 to-red-950/80', regen: 'from-green-800/70 to-emerald-950/80',
   fortune: 'from-yellow-700/70 to-yellow-950/80', wisdom: 'from-indigo-800/70 to-indigo-950/80',
+  fury: 'from-orange-700/70 to-red-950/80',
 };
 
 function Stat({ label, value }: { label: string; value: string | number }) {
@@ -58,8 +61,20 @@ export default function SkillsPanel({ skills, gold, hero, stats, souls, onBuy }:
         <p className="text-center text-purple-300/80 text-xs mb-3">Прокачивай навыки за золото — они сбрасываются при перерождении</p>
         <div className="space-y-2">
           {skills.map(s => {
+            if (s.locked) {
+              return (
+                <div key={s.id} className="rounded-xl p-2.5 bg-black/40 border border-dashed border-purple-800/60 flex items-center gap-3 opacity-80">
+                  <div className="text-3xl bg-black/40 rounded-xl w-12 h-12 flex items-center justify-center shrink-0 grayscale">🔒</div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-black text-purple-200 text-sm">{s.emoji} {s.name}</h4>
+                    <p className="text-[11px] text-purple-300/80 leading-tight">{s.desc}</p>
+                    <p className="text-xs text-amber-300 mt-0.5 font-bold">Откроется после {s.unlockRebirths} перерождений</p>
+                  </div>
+                </div>
+              );
+            }
             const cost = skillCost(s, s.level);
-            const maxed = s.level >= s.maxLevel;
+            const maxed = s.level >= BASE_MAX(s);
             const canBuy = !maxed && gold >= cost;
             return (
               <div key={s.id} className={`rounded-xl p-2.5 bg-gradient-to-br ${TINT[s.id]} border ${maxed ? 'border-amber-400/80' : 'border-purple-600/40'} flex items-center gap-3`}>

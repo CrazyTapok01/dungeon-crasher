@@ -2,7 +2,7 @@ import type {
   Equipment, HeroState, Item, ItemSlot, Meta, Settings, SkillLevels, UpgradeCounts,
 } from '../types';
 import {
-  ACHIEVEMENTS, INITIAL_HERO, RARITY_NAME, SKILLS, STAGES_PER_FLOOR,
+  ACHIEVEMENTS, INITIAL_HERO, MAX_PERK_LEVELS, RARITY_NAME, SKILLS, STAGES_PER_FLOOR,
   emptyMeta, emptySkillLevels,
 } from '../gameData';
 
@@ -62,7 +62,7 @@ function sanitizeLevels(raw: unknown): SkillLevels {
   const levels = emptySkillLevels();
   for (const def of SKILLS) {
     const v = found.get(def.id);
-    if (typeof v === 'number') levels[def.id] = clamp(Math.floor(v), 0, def.maxLevel);
+    if (typeof v === 'number') levels[def.id] = clamp(Math.floor(v), 0, def.maxLevel + MAX_PERK_LEVELS);
   }
   return levels;
 }

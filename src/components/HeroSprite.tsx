@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { Equipment, Rarity } from '../types';
 
 /*
@@ -27,7 +28,7 @@ interface Props {
   dead: boolean;
 }
 
-export default function HeroSprite({ equipped, swingKey, heavy, dead }: Props) {
+function HeroSprite({ equipped, swingKey, heavy, dead }: Props) {
   const weapon = equipped.weapon?.rarity ?? 'none';
   const armor = equipped.armor?.rarity ?? 'none';
   const amulet = equipped.amulet?.rarity;
@@ -57,10 +58,6 @@ export default function HeroSprite({ equipped, swingKey, heavy, dead }: Props) {
           <stop offset="0" stopColor={amulet ? AURA[amulet] : '#000'} stopOpacity=".7" />
           <stop offset="1" stopColor={amulet ? AURA[amulet] : '#000'} stopOpacity="0" />
         </radialGradient>
-        <filter id="hs-glow" x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="2.5" result="b" />
-          <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
-        </filter>
       </defs>
 
       {amulet && <circle className="hero-aura" cx="66" cy="92" r="64" fill="url(#hs-aura)" />}
@@ -100,8 +97,8 @@ export default function HeroSprite({ equipped, swingKey, heavy, dead }: Props) {
       </g>
       <circle cx="68" cy="45" r="19" fill="url(#hs-steel)" stroke="#1e293b" strokeWidth="1.6" />
       <path d="M54 45 h30 v7 q0 9 -15 9 q-15 0 -15 -9z" fill="#0b1220" />
-      <rect x="60" y="46" width="5" height="2.6" rx="1" fill="#fde047" filter="url(#hs-glow)" />
-      <rect x="72" y="46" width="5" height="2.6" rx="1" fill="#fde047" filter="url(#hs-glow)" />
+      <rect x="60" y="46" width="5" height="2.6" rx="1" fill="#fde047" stroke="#fde047" strokeOpacity=".35" strokeWidth="3" />
+      <rect x="72" y="46" width="5" height="2.6" rx="1" fill="#fde047" stroke="#fde047" strokeOpacity=".35" strokeWidth="3" />
       <path d="M68 28 v16" stroke="#ffffff55" strokeWidth="2" />
       <path d="M52 40 Q68 32 84 40" stroke="#ffffff44" strokeWidth="2" fill="none" />
 
@@ -112,7 +109,10 @@ export default function HeroSprite({ equipped, swingKey, heavy, dead }: Props) {
       {/* рука с мечом: ключ перезапускает анимацию взмаха */}
       <g key={swingKey} className={swingKey ? (heavy ? 'sword-swing-heavy' : 'sword-swing') : 'sword-idle'}>
         <path d="M90 72 L104 84" stroke="url(#hs-steel2)" strokeWidth="9" strokeLinecap="round" />
-        <g filter={legendaryBlade ? 'url(#hs-glow)' : undefined}>
+        <g>
+          {legendaryBlade && (
+            <path d="M101 76 L108 76 L106.5 18 L104.5 6 L102.5 18 Z" fill="none" stroke={b2} strokeOpacity=".4" strokeWidth="6" strokeLinejoin="round" />
+          )}
           <path d="M101 76 L108 76 L106.5 18 L104.5 6 L102.5 18 Z" fill="url(#hs-blade)" stroke="#0f172a" strokeWidth="1" strokeLinejoin="round" />
           <path d="M104.5 12 V74" stroke="#ffffff88" strokeWidth="1" />
         </g>
@@ -124,3 +124,6 @@ export default function HeroSprite({ equipped, swingKey, heavy, dead }: Props) {
     </svg>
   );
 }
+
+// Не перерисовываем рыцаря на каждом ходе боя — только когда меняется экипировка, взмах или смерть
+export default memo(HeroSprite);

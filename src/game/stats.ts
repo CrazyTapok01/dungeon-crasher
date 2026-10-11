@@ -18,7 +18,7 @@ export function computeStats(
   const maxHp = hero.baseMaxHp + (armor?.hp ?? 0) + (amulet?.hp ?? 0) + levels.vitality * SKILL_BONUS.vitality;
 
   return {
-    atk: Math.round(atk * mult),
+    atk: Math.round(atk * mult * (1 + (levels.fury * SKILL_BONUS.fury) / 100)),
     def: hero.baseDef + (armor?.def ?? 0) + (amulet?.def ?? 0) + levels.armor * SKILL_BONUS.armor,
     maxHp: Math.round(maxHp * mult),
     critChance: Math.min(STAT_CAPS.critChance, BASE_STATS.critChance + levels.crit * SKILL_BONUS.crit + sum('crit')),

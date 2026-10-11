@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useReducer, useState } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { AbilityId, Item, Skill, SkillId, UpgradeKind } from '../types';
-import { BANNER_DURATION_MS, COMBAT_TICK_MS, RESPAWN_DELAY_MS, SKILLS } from '../gameData';
+import { BANNER_DURATION_MS, COMBAT_TICK_MS, RESPAWN_DELAY_MS, SKILLS, skillMaxLevel, skillUnlocked } from '../gameData';
 import { computeStats } from '../game/stats';
 import { gameReducer, loadInitialState } from '../game/reducer';
 import { clearSave, saveGame } from '../game/save';
@@ -22,8 +22,13 @@ export function useGame() {
   );
 
   const skills = useMemo<Skill[]>(
-    () => SKILLS.map(def => ({ ...def, level: state.skillLevels[def.id] })),
-    [state.skillLevels],
+    () => SKILLS.map(def => ({
+      ...def,
+      maxLevel: skillMaxLevel(def, state.meta.rebirths),
+      level: state.skillLevels[def.id],
+      locked: !skillUnlocked(def, state.meta.rebirths),
+    })),
+    [state.skillLevels, state.meta.rebirths],
   );
 
   // Бой: раз в COMBAT_TICK_MS ходит то герой, то монстр.
@@ -54,17 +59,30 @@ export function useGame() {
     state.events.forEach(playForEvent);
   }, [state.events]);
 
-  // Автосохранение
+  // Автосохранение. Писать в память телефона каждые 0.7 с (на каждый ход боя) — лишняя нагрузка,
+  // поэтому сохраняем не чаще раза в 5 секунд, а также сразу при сворачивании игры и закрытии.
+  const latest = useRef(state);
+  latest.current = state;
+  const saveTimer = useRef<number | null>(null);
+
   useEffect(() => {
-    saveGame({
-      hero: state.hero,
-      skillLevels: state.skillLevels,
-      equipped: state.equipped,
-      inventory: state.inventory,
-      meta: state.meta,
-      upgradeCounts: state.upgradeCounts,
-      settings: state.settings,
-    });
+    const flush = () => {
+      if (saveTimer.current !== null) { clearTimeout(saveTimer.current); saveTimer.current = null; }
+      const st = latest.current;
+      saveGame({
+        hero: st.hero, skillLevels: st.skillLevels, equipped: st.equipped, inventory: st.inventory,
+        meta: st.meta, upgradeCounts: st.upgradeCounts, settings: st.settings,
+      });
+    };
+    if (saveTimer.current === null) saveTimer.current = window.setTimeout(flush, 5000);
+
+    const onHide = () => { if (document.hidden) flush(); };
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', flush);
+    return () => {
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', flush);
+    };
   }, [state.hero, state.skillLevels, state.equipped, state.inventory, state.meta, state.upgradeCounts, state.settings]);
 
   // Свернул игру на телефоне и вернулся — выдаём награду за отсутствие

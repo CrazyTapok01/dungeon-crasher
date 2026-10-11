@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { HeroState, HeroStats, HeroStatus } from '../types';
 import StatBar from './StatBar';
 
@@ -8,7 +9,7 @@ interface Props {
 }
 
 /** Плашка героя над сценой: уровень, здоровье, эффекты (яд, щит). */
-export default function HeroPanel({ hero, stats, status }: Props) {
+function HeroPanel({ hero, stats, status }: Props) {
   return (
     <div className="hud">
       <div className="hud-title">
@@ -21,9 +22,12 @@ export default function HeroPanel({ hero, stats, status }: Props) {
         label={`${hero.hp} / ${stats.maxHp}`}
       />
       <div className="hud-chips">
+        {status.rageCharges > 0 && <span className="chip chip-red">😡 ×{status.rageCharges}</span>}
         {status.shieldCharges > 0 && <span className="chip chip-blue">🛡️ ×{status.shieldCharges}</span>}
         {status.poisonTurns > 0 && <span className="chip chip-green">🤢 яд ×{status.poisonTurns}</span>}
       </div>
     </div>
   );
 }
+
+export default memo(HeroPanel);

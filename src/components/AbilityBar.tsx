@@ -1,8 +1,9 @@
 import type { AbilityId, Cooldowns } from '../types';
-import { ABILITIES, COMBAT_TICK_MS } from '../gameData';
+import { ABILITIES, COMBAT_TICK_MS, abilityUnlocked } from '../gameData';
 
 interface Props {
   level: number;
+  rebirths: number;
   cooldowns: Cooldowns;
   auto: boolean;
   onUse: (id: AbilityId) => void;
@@ -10,12 +11,12 @@ interface Props {
 }
 
 /** Три кнопки-способности с кружком перезарядки и переключатель «Авто». */
-export default function AbilityBar({ level, cooldowns, auto, onUse, onToggleAuto }: Props) {
+export default function AbilityBar({ level, rebirths, cooldowns, auto, onUse, onToggleAuto }: Props) {
   return (
     <div className="flex items-start gap-3">
-      <div className="grid grid-cols-3 gap-3 flex-1 justify-items-center">
+      <div className="grid grid-cols-4 gap-2 flex-1 justify-items-center">
         {ABILITIES.map(a => {
-          const locked = level < a.unlockLevel;
+          const locked = !abilityUnlocked(a, level, rebirths);
           const cd = cooldowns[a.id];
           const ready = !locked && cd === 0;
           const pct = (cd / a.cooldownTicks) * 100;
@@ -29,7 +30,7 @@ export default function AbilityBar({ level, cooldowns, auto, onUse, onToggleAuto
                 aria-label={a.name}
                 title={a.desc}
               >
-                <span className="text-3xl drop-shadow">{locked ? '🔒' : a.emoji}</span>
+                <span className="text-2xl drop-shadow">{locked ? '🔒' : a.emoji}</span>
                 {!locked && cd > 0 && (
                   <>
                     <div className="ability-cd" style={{ '--p': pct } as React.CSSProperties} />
@@ -38,7 +39,7 @@ export default function AbilityBar({ level, cooldowns, auto, onUse, onToggleAuto
                 )}
               </button>
               <div className="text-[10px] mt-1 text-center leading-tight text-purple-200/90 font-bold">
-                {locked ? `Ур. ${a.unlockLevel}` : a.name}
+                {locked ? (a.unlockRebirths && rebirths < a.unlockRebirths ? `${a.unlockRebirths} перерожд.` : `Ур. ${a.unlockLevel}`) : a.name}
               </div>
             </div>
           );

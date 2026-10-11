@@ -4,12 +4,13 @@ import type {
   SkillId, SkillLevels, UpgradeCounts, UpgradeKind,
 } from '../types';
 import {
-  ABILITIES, ACHIEVEMENTS, BOSS, DEATH_GOLD_KEPT, DROP, ENRAGE, HEAL_ABILITY, INITIAL_HERO,
-  INVENTORY_LIMIT, LEVEL_UP, LOG_LIMIT, OFFLINE, POISON, PRESTIGE, RARITY_NAME, REGEN_FRAC,
+  ABILITIES, ACHIEVEMENTS, BOSS, DROP, ENRAGE, HEAL_ABILITY, INITIAL_HERO,
+  LEVEL_UP, LOG_LIMIT, OFFLINE, PERKS, POISON, PRESTIGE, RAGE, RARITY_NAME, REGEN_FRAC,
   SHIELD, SHOP_POTION, SHOP_UPGRADES, SKILLS, STAGES_PER_FLOOR, STRIKE, SWIFT_DODGE, THORNS_FRAC,
-  TRAITS, abilityDef, baseMonsterStats, biomeForFloor, chestCost, emptyCooldowns, emptyMeta,
-  emptySkillLevels, emptyUpgradeCounts, generateItem, generateMonster, itemScore, junkItems,
-  skillCost, soulsForFloor, upgradeCost,
+  TRAITS, abilityDef, abilityUnlocked, baseMonsterStats, biomeForFloor, chestCost, chestMinRarity,
+  deathGoldKept, emptyCooldowns, emptyMeta, emptySkillLevels, emptyUpgradeCounts, generateItem,
+  generateMonster, inventoryLimit, itemScore, junkItems, skillCost, skillMaxLevel, skillUnlocked,
+  soulsForFloor, upgradeAmount, upgradeCost,
 } from '../gameData';
 import { computeStats } from './stats';
 import { applyXp, rollHeroAttack, rollMonsterAttack } from './combat';
@@ -122,7 +123,7 @@ function damageHero(s: GameState, dmg: number): GameState {
   return next;
 }
 
-const NO_STATUS: HeroStatus = { poisonTurns: 0, poisonDmg: 0, shieldCharges: 0 };
+const NO_STATUS: HeroStatus = { poisonTurns: 0, poisonDmg: 0, shieldCharges: 0, rageCharges: 0 };
 
 function freshAi(): MonsterAi {
   return { turnsUntilHeavy: BOSS.heavyEvery, charging: false, enraged: false };
@@ -245,7 +246,7 @@ function checkAchievements(s: GameState): GameState {
     const reward = [a.reward.gold && `${a.reward.gold} золота`, a.reward.souls && `${a.reward.souls} душ`]
       .filter(Boolean).join(', ');
     next = withLog(next, `🏆 Достижение «${a.name}»! Награда: ${reward}`, 'boss');
-    next = emit(next, { type: 'achievement', id: a.id });
+    next = emit(next, { type: 'achievement', key: a.id });
   }
   return next;
 }
@@ -253,7 +254,7 @@ function checkAchievements(s: GameState): GameState {
 // ───────────────────────── способности ─────────────────────────
 
 const canCast = (s: GameState, id: AbilityId): boolean =>
-  !s.isDead && s.hero.level >= abilityDef(id).unlockLevel && s.cooldowns[id] === 0;
+  !s.isDead && abilityUnlocked(abilityDef(id), s.hero.level, s.meta.rebirths) && s.cooldowns[id] === 0;
 
 function castAbility(state: GameState, id: AbilityId): GameState {
   const def = abilityDef(id);
@@ -279,6 +280,11 @@ function castAbility(state: GameState, id: AbilityId): GameState {
         { ...s, heroStatus: { ...s.heroStatus, shieldCharges: SHIELD.charges } },
         `🛡️ Щит поднят: ${SHIELD.charges} удара будут слабее`, 'ability',
       );
+    case 'rage':
+      return withLog(
+        { ...s, heroStatus: { ...s.heroStatus, rageCharges: RAGE.charges } },
+        `😡 Берсерк! Следующие ${RAGE.charges} удара сильнее на ${Math.round((RAGE.mult - 1) * 100)}%`, 'ability',
+      );
   }
 }
 
@@ -290,6 +296,10 @@ function autoCast(state: GameState): GameState {
   if (canCast(s, 'shield') && s.heroStatus.shieldCharges === 0
       && (s.monsterAi.charging || hpPct < 0.55 || (s.monster.isBoss && hpPct < 0.8))) {
     s = castAbility(s, 'shield');
+  }
+  if (canCast(s, 'rage') && s.heroStatus.rageCharges === 0
+      && (s.monster.isBoss || s.monster.isElite || s.monsterHp / s.monster.hp > 0.5)) {
+    s = castAbility(s, 'rage');
   }
   if (canCast(s, 'strike')) s = castAbility(s, 'strike');
   return s;
@@ -341,7 +351,10 @@ function heroAttack(state: GameState): GameState {
   if (monster.trait === 'swift' && Math.random() * 100 < SWIFT_DODGE) {
     return withLog(emit(s, { type: 'monster_dodge' }), `💨 ${monster.name} уворачивается!`, 'dodge');
   }
-  return hitMonster(s, rollHeroAttack(stats, monster), false);
+  // «Берсерк» усиливает несколько обычных ударов подряд
+  const raging = s.heroStatus.rageCharges > 0;
+  if (raging) s = { ...s, heroStatus: { ...s.heroStatus, rageCharges: s.heroStatus.rageCharges - 1 } };
+  return hitMonster(s, rollHeroAttack(stats, monster, raging ? { mult: RAGE.mult } : {}), false);
 }
 
 function monsterAttack(state: GameState): GameState {
@@ -483,7 +496,7 @@ function dropItem(s: GameState, item: Item): GameState {
   const label = `${item.emoji} ${item.name} (${RARITY_NAME[item.rarity]})`;
   const meta = item.rarity === 'legendary' ? { ...s.meta, legendaries: s.meta.legendaries + 1 } : s.meta;
   s = emit({ ...s, meta }, { type: 'loot', rarity: item.rarity });
-  if (s.inventory.length >= INVENTORY_LIMIT) {
+  if (s.inventory.length >= inventoryLimit(s.meta.rebirths)) {
     return withLog(withGold(s, item.price), `🎒 Сумка полна — ${label} продан за ${item.price} золота`, 'loot');
   }
   return withLog({ ...s, inventory: [item, ...s.inventory] }, `🎁 Выпало: ${label}`, 'loot');
@@ -494,12 +507,12 @@ function respawnHero(state: GameState): GameState {
     ...state.hero,
     floor: Math.max(1, state.hero.floor - 1),
     stage: 1,
-    gold: Math.floor(state.hero.gold * DEATH_GOLD_KEPT),
+    gold: Math.floor(state.hero.gold * deathGoldKept(state.meta.rebirths)),
   };
-  const lostPercent = Math.round((1 - DEATH_GOLD_KEPT) * 100);
+  const lostPercent = Math.round((1 - deathGoldKept(state.meta.rebirths)) * 100);
   let s: GameState = { ...state, hero, isDead: false, heroStatus: { ...NO_STATUS } };
   s = { ...s, hero: { ...s.hero, hp: statsOf(s).maxHp } };
-  s = withLog(s, `✨ Ты возродился! Потеряно ${lostPercent}% золота.`, 'heal');
+  s = withLog(s, lostPercent > 0 ? `✨ Ты возродился! Потеряно ${lostPercent}% золота.` : '✨ Ты возродился! Золото осталось при тебе.', 'heal');
   s = emit(s, { type: 'respawn' });
   return spawnMonster(s);
 }
@@ -543,6 +556,7 @@ function reduce(state: GameState, action: Action): GameState {
           strike: Math.max(0, state.cooldowns.strike - 1),
           shield: Math.max(0, state.cooldowns.shield - 1),
           heal: Math.max(0, state.cooldowns.heal - 1),
+          rage: Math.max(0, state.cooldowns.rage - 1),
         },
       };
       if (s.settings.autoAbilities) s = autoCast(s);
@@ -561,10 +575,10 @@ function reduce(state: GameState, action: Action): GameState {
 
     case 'BUY_SKILL': {
       const def = SKILLS.find(d => d.id === action.id);
-      if (!def) return state;
+      if (!def || !skillUnlocked(def, state.meta.rebirths)) return state;
       const level = state.skillLevels[def.id];
       const cost = skillCost(def, level);
-      if (level >= def.maxLevel || state.hero.gold < cost) return state;
+      if (level >= skillMaxLevel(def, state.meta.rebirths) || state.hero.gold < cost) return state;
       return clampHp(emit({
         ...withGold(fresh, -cost),
         skillLevels: { ...state.skillLevels, [def.id]: level + 1 },
@@ -581,20 +595,21 @@ function reduce(state: GameState, action: Action): GameState {
     case 'BUY_UPGRADE': {
       const up = SHOP_UPGRADES.find(u => u.kind === action.kind);
       if (!up) return state;
-      const cost = upgradeCost(up, state.upgradeCounts[up.kind]);
+      const cost = upgradeCost(up, state.upgradeCounts[up.kind], state.meta.rebirths);
       if (state.hero.gold < cost) return state;
+      const amount = upgradeAmount(up, state.meta.rebirths);
       const hero = { ...state.hero, gold: state.hero.gold - cost };
-      if (up.kind === 'atk') hero.baseAtk += up.amount;
-      if (up.kind === 'def') hero.baseDef += up.amount;
-      if (up.kind === 'hp') { hero.baseMaxHp += up.amount; hero.hp += up.amount; }
+      if (up.kind === 'atk') hero.baseAtk += amount;
+      if (up.kind === 'def') hero.baseDef += amount;
+      if (up.kind === 'hp') { hero.baseMaxHp += amount; hero.hp += amount; }
       const counts = { ...state.upgradeCounts, [up.kind]: state.upgradeCounts[up.kind] + 1 };
       return emit(withLog({ ...fresh, hero, upgradeCounts: counts }, `🔧 Куплено: ${up.name}`), { type: 'ui', kind: 'buy' });
     }
 
     case 'BUY_CHEST': {
       const cost = chestCost(state.hero.floor);
-      if (state.hero.gold < cost || state.inventory.length >= INVENTORY_LIMIT) return state;
-      const item = generateItem(state.hero.floor, true, 'uncommon');
+      if (state.hero.gold < cost || state.inventory.length >= inventoryLimit(state.meta.rebirths)) return state;
+      const item = generateItem(state.hero.floor, true, chestMinRarity(state.meta.rebirths));
       let s = withGold(fresh, -cost);
       s = dropItem(s, item);
       return { ...s, chestResult: item };
@@ -629,7 +644,7 @@ function reduce(state: GameState, action: Action): GameState {
 
     case 'REBIRTH': {
       const { floor } = state.hero;
-      const gain = soulsForFloor(floor);
+      const gain = soulsForFloor(floor, state.meta.rebirths);
       if (gain <= 0) return state;
       const meta: Meta = { ...state.meta, souls: state.meta.souls + gain, rebirths: state.meta.rebirths + 1 };
       let s = createState({
@@ -641,8 +656,14 @@ function reduce(state: GameState, action: Action): GameState {
         upgradeCounts: emptyUpgradeCounts(),
         settings: state.settings,
       });
-      s = withLog(s, `👻 ПЕРЕРОЖДЕНИЕ! Получено душ: ${gain}. Всего: ${meta.souls}`, 'boss');
-      return emit(s, { type: 'rebirth', souls: gain });
+      s = withLog(s, `👻 ПЕРЕРОЖДЕНИЕ #${meta.rebirths}! Получено душ: ${gain}. Всего: ${meta.souls}`, 'boss');
+      s = emit(s, { type: 'rebirth', souls: gain });
+      // награды «Пути перерождений», открывшиеся именно сейчас
+      for (const perk of PERKS.filter(p => p.rebirths === meta.rebirths)) {
+        s = withLog(s, `🌟 Открыто: ${perk.emoji} ${perk.name} — ${perk.desc}`, 'boss');
+        s = emit(s, { type: 'perk', key: perk.id });
+      }
+      return s;
     }
 
     case 'OFFLINE':

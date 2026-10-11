@@ -1,5 +1,5 @@
 import type { Item, UpgradeCounts, UpgradeKind } from '../types';
-import { INVENTORY_LIMIT, SHOP_POTION, SHOP_UPGRADES, chestCost, upgradeCost } from '../gameData';
+import { SHOP_POTION, SHOP_UPGRADES, chestCost, chestMinRarity, inventoryLimit, upgradeAmount, upgradeCost } from '../gameData';
 import ItemCard from './ItemCard';
 
 interface Props {
@@ -8,14 +8,16 @@ interface Props {
   inventoryCount: number;
   upgradeCounts: UpgradeCounts;
   chestResult: Item | null;
+  rebirths: number;
   onBuyPotion: () => void;
   onBuyUpgrade: (kind: UpgradeKind) => void;
   onBuyChest: () => void;
 }
 
-export default function ShopPanel({ gold, floor, inventoryCount, upgradeCounts, chestResult, onBuyPotion, onBuyUpgrade, onBuyChest }: Props) {
+export default function ShopPanel({ gold, floor, inventoryCount, upgradeCounts, chestResult, rebirths, onBuyPotion, onBuyUpgrade, onBuyChest }: Props) {
   const chest = chestCost(floor);
-  const bagFull = inventoryCount >= INVENTORY_LIMIT;
+  const bagFull = inventoryCount >= inventoryLimit(rebirths);
+  const minRarity = chestMinRarity(rebirths) === 'rare' ? 'редкой' : 'необычной';
   return (
     <div className="panel rounded-xl p-3">
       <h2 className="text-xl font-black text-amber-300 mb-1 text-center text-stroke">🏪 Лавка торговца</h2>
@@ -26,7 +28,7 @@ export default function ShopPanel({ gold, floor, inventoryCount, upgradeCounts, 
         <div className="flex items-center gap-3 mb-2">
           <div className="text-5xl drop-shadow-[0_0_10px_rgba(251,191,36,0.6)]">🧰</div>
           <div className="flex-1 text-xs text-amber-200/90 leading-snug">
-            Гарантированная вещь не хуже «необычной», с хорошим шансом на редкую и эпическую.
+            Гарантированная вещь не хуже «{minRarity}», с хорошим шансом на более редкую.
             Цена растёт с глубиной.
           </div>
         </div>
@@ -57,13 +59,13 @@ export default function ShopPanel({ gold, floor, inventoryCount, upgradeCounts, 
       <div className="space-y-2">
         {SHOP_UPGRADES.map(u => {
           const bought = upgradeCounts[u.kind];
-          const cost = upgradeCost(u, bought);
+          const cost = upgradeCost(u, bought, rebirths);
           return (
             <div key={u.kind} className="rounded-xl p-3 bg-gradient-to-br from-amber-900/30 to-orange-950/40 border border-amber-700/40 flex items-center gap-3">
               <div className="text-4xl">{u.emoji}</div>
               <div className="flex-1 min-w-0">
                 <div className="font-bold text-amber-200 text-sm">{u.name} <span className="text-[11px] text-amber-400/70">×{bought}</span></div>
-                <div className="text-xs text-amber-300/80">+{u.amount} {u.label}</div>
+                <div className="text-xs text-amber-300/80">+{upgradeAmount(u, rebirths)} {u.label}</div>
               </div>
               <button disabled={gold < cost} onClick={() => onBuyUpgrade(u.kind)} className="btn-fantasy py-2 px-3 rounded-lg font-bold text-xs">
                 💰 {cost}

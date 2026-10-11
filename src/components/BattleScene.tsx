@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { GameEvent, HeroStats } from '../types';
 import type { GameState } from '../game/reducer';
 import { RARITY_COLORS, biomeForFloor } from '../gameData';
+import { useGfx } from '../game/perf';
 import ParticleLayer, { type ParticleHandle } from './ParticleLayer';
 import HeroSprite from './HeroSprite';
 import HeroPanel from './HeroPanel';
@@ -43,6 +44,7 @@ function Torch({ side }: { side: 'left' | 'right' }) {
 export default function BattleScene({ state, stats }: Props) {
   const { hero, monster, monsterHp, monsterAi, heroStatus, equipped, isDead, events, showFloorBanner } = state;
   const biome = biomeForFloor(hero.floor);
+  const { low } = useGfx();
 
   const sceneRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
@@ -162,6 +164,7 @@ export default function BattleScene({ state, stats }: Props) {
           break;
         case 'ability':
           if (e.ability === 'shield') { burst('shield', 'hero'); flash('#38bdf8', 0.25, 400); }
+          if (e.ability === 'rage') { burst('boss', 'hero'); flash('#ef4444', 0.25, 400); }
           break;
         case 'boss_spawn':
           burst('boss', 'monster');
@@ -233,7 +236,7 @@ export default function BattleScene({ state, stats }: Props) {
   } as React.CSSProperties;
 
   return (
-    <div ref={sceneRef} className="scene" style={vars}>
+    <div ref={sceneRef} className={`scene ${low ? 'lowfx' : ''}`} style={vars}>
       <div ref={innerRef} className="scene-inner">
         {/* ── фон ── */}
         <div className="scene-wall" />
