@@ -10,6 +10,8 @@ interface Props {
   onSell: (item: Item) => void;
   onEquipBest: () => void;
   onSellJunk: () => void;
+  gold: number;
+  onEnhance: (slot: ItemSlot) => void;
 }
 
 const SLOTS: { key: ItemSlot; label: string; emoji: string }[] = [
@@ -18,7 +20,7 @@ const SLOTS: { key: ItemSlot; label: string; emoji: string }[] = [
   { key: 'amulet', label: 'Амулет', emoji: '📿' },
 ];
 
-export default function InventoryPanel({ inventory, limit, equipped, onEquip, onSell, onEquipBest, onSellJunk }: Props) {
+export default function InventoryPanel({ inventory, limit, equipped, onEquip, onSell, onEquipBest, onSellJunk, gold, onEnhance }: Props) {
   // лучшие и редкие — сверху
   const sorted = [...inventory].sort((a, b) =>
     RARITY_ORDER.indexOf(b.rarity) - RARITY_ORDER.indexOf(a.rarity) || itemScore(b) - itemScore(a));
@@ -38,7 +40,7 @@ export default function InventoryPanel({ inventory, limit, equipped, onEquip, on
           return (
             <div key={slot.key}>
               <div className="text-[11px] text-purple-300 mb-1">{slot.emoji} {slot.label}</div>
-              {item ? <ItemCard item={item} equipped /> : (
+              {item ? <ItemCard item={item} equipped gold={gold} onEnhance={() => onEnhance(slot.key)} /> : (
                 <div className="rounded-lg bg-black/30 border border-dashed border-purple-800/60 text-purple-400/60 text-center text-sm h-[72px] flex items-center justify-center italic">Пусто</div>
               )}
             </div>

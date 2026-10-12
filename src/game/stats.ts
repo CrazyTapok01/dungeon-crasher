@@ -1,5 +1,5 @@
-import type { Equipment, HeroState, HeroStats, SkillLevels } from '../types';
-import { BASE_STATS, PRESTIGE, SKILL_BONUS, STAT_CAPS, soulMultiplier } from '../gameData';
+import type { Equipment, HeroState, HeroStats, RelicId, SkillLevels } from '../types';
+import { BASE_STATS, enhanced, PRESTIGE, SKILL_BONUS, STAT_CAPS, soulMultiplier } from '../gameData';
 
 /**
  * Итоговые параметры героя = (база + предметы + навыки) × бонус душ.
@@ -7,8 +7,14 @@ import { BASE_STATS, PRESTIGE, SKILL_BONUS, STAT_CAPS, soulMultiplier } from '..
  */
 export function computeStats(
   hero: HeroState, levels: SkillLevels, equipped: Equipment, souls = 0,
+  relics: Partial<Record<RelicId, number>> = {},
 ): HeroStats {
-  const { weapon, armor, amulet } = equipped;
+  const rl = (id: RelicId) => relics[id] ?? 0;
+  const { weapon, armor, amulet } = {
+    weapon: equipped.weapon && enhanced(equipped.weapon),
+    armor: equipped.armor && enhanced(equipped.armor),
+    amulet: equipped.amulet && enhanced(equipped.amulet),
+  };
   const items = [weapon, armor, amulet];
   const sum = (key: 'crit' | 'critdmg' | 'dodge' | 'vamp') =>
     items.reduce((acc, it) => acc + (it?.[key] ?? 0), 0);
@@ -18,15 +24,15 @@ export function computeStats(
   const maxHp = hero.baseMaxHp + (armor?.hp ?? 0) + (amulet?.hp ?? 0) + levels.vitality * SKILL_BONUS.vitality;
 
   return {
-    atk: Math.round(atk * mult * (1 + (levels.fury * SKILL_BONUS.fury) / 100)),
-    def: hero.baseDef + (armor?.def ?? 0) + (amulet?.def ?? 0) + levels.armor * SKILL_BONUS.armor,
-    maxHp: Math.round(maxHp * mult),
-    critChance: Math.min(STAT_CAPS.critChance, BASE_STATS.critChance + levels.crit * SKILL_BONUS.crit + sum('crit')),
+    atk: Math.round(atk * mult * (1 + (levels.fury * SKILL_BONUS.fury) / 100) * (1 + rl('fang') * 0.03)),
+    def: hero.baseDef + (armor?.def ?? 0) + (amulet?.def ?? 0) + levels.armor * SKILL_BONUS.armor + rl('scale') * 2,
+    maxHp: Math.round(maxHp * mult * (1 + rl('heart') * 0.04)),
+    critChance: Math.min(STAT_CAPS.critChance, BASE_STATS.critChance + levels.crit * SKILL_BONUS.crit + sum('crit') + rl('eye')),
     critDmg: BASE_STATS.critDmg + levels.critdmg * SKILL_BONUS.critdmg + sum('critdmg'),
-    dodge: Math.min(STAT_CAPS.dodge, BASE_STATS.dodge + levels.dodge * SKILL_BONUS.dodge + sum('dodge')),
-    lifesteal: BASE_STATS.lifesteal + levels.vamp * SKILL_BONUS.vamp + sum('vamp'),
+    dodge: Math.min(STAT_CAPS.dodge, BASE_STATS.dodge + levels.dodge * SKILL_BONUS.dodge + sum('dodge') + rl('wind') * 0.5),
+    lifesteal: BASE_STATS.lifesteal + levels.vamp * SKILL_BONUS.vamp + sum('vamp') + rl('blood') * 0.4,
     regen: levels.regen * SKILL_BONUS.regen,
-    goldBonus: levels.fortune * SKILL_BONUS.fortune + Math.round(souls * PRESTIGE.goldPerSoul * 100),
-    xpBonus: levels.wisdom * SKILL_BONUS.wisdom,
+    goldBonus: levels.fortune * SKILL_BONUS.fortune + Math.round(souls * PRESTIGE.goldPerSoul * 100) + rl('coin') * 4,
+    xpBonus: levels.wisdom * SKILL_BONUS.wisdom + rl('tome') * 4,
   };
 }

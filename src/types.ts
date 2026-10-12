@@ -18,6 +18,7 @@ export interface Item {
   rarity: Rarity;
   emoji: string;
   price: number;
+  plus?: number;    // уровень заточки (+1…+10): усиливает атаку, защиту и HP предмета
 }
 
 /** Что надето на герое: по одному предмету на слот. */
@@ -38,6 +39,7 @@ export interface Monster {
   isElite: boolean;
   tier: number;
   trait?: MonsterTrait;
+  goblin?: boolean; // гоблин-казначей: мало HP, много золота
 }
 
 /** «Мозг» монстра в текущем бою: босс копит мощный удар, берсерк звереет. */
@@ -140,6 +142,34 @@ export interface Meta {
   goldEarned: number;
   abilitiesUsed: number;
   achievements: string[]; // id полученных достижений
+  kills: number;          // всего убито монстров (за всю игру)
+  relics: Record<RelicId, number>; // уровни реликвий — не сбрасываются перерождением
+  quests: Quest[];        // активные задания
+  questsDone: number;     // сколько заданий выполнено (растёт сложность)
+  daily: { last: string; streak: number }; // ежедневная награда
+  goblins: number;        // побеждено гоблинов-казначеев
+}
+
+/** Реликвии: редкая добыча с боссов, постоянные бонусы. */
+export type RelicId = 'fang' | 'heart' | 'coin' | 'eye' | 'tome' | 'scale' | 'blood' | 'wind';
+
+export interface RelicDef {
+  id: RelicId;
+  name: string;
+  emoji: string;
+  desc: string;       // что даёт один уровень
+  maxLevel: number;
+}
+
+/** Задание: считаем прирост счётчика meta[counter] с момента выдачи. */
+export type QuestKind = 'kills' | 'bosses' | 'elites' | 'crits' | 'abilities' | 'floor';
+
+export interface Quest {
+  kind: QuestKind;
+  target: number;
+  base: number;   // значение счётчика при выдаче (для 'floor' — 0)
+  souls: number;  // награда
+  gold: number;
 }
 
 export interface Settings {
@@ -205,6 +235,8 @@ export type GameEventBody =
   // У этих двух событий своё поле key: поле id занято порядковым номером события (GameEvent.id)
   | { type: 'achievement'; key: string }
   | { type: 'perk'; key: string }
+  | { type: 'relic'; key: string; level: number }
+  | { type: 'quest'; text: string }
   | { type: 'ui'; kind: 'buy' | 'equip' | 'sell' };
 
 export type GameEvent = GameEventBody & { id: number };

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import type { AbilityId, Item, Skill, SkillId, UpgradeKind } from '../types';
+import type { AbilityId, Item, ItemSlot, Skill, SkillId, UpgradeKind } from '../types';
 import { BANNER_DURATION_MS, COMBAT_TICK_MS, RESPAWN_DELAY_MS, SKILLS, skillMaxLevel, skillUnlocked } from '../gameData';
 import { computeStats } from '../game/stats';
 import { gameReducer, loadInitialState } from '../game/reducer';
@@ -17,8 +17,8 @@ export function useGame() {
   const [autoFight, setAutoFight] = useState(true);
 
   const stats = useMemo(
-    () => computeStats(state.hero, state.skillLevels, state.equipped, state.meta.souls),
-    [state.hero, state.skillLevels, state.equipped, state.meta.souls],
+    () => computeStats(state.hero, state.skillLevels, state.equipped, state.meta.souls, state.meta.relics),
+    [state.hero, state.skillLevels, state.equipped, state.meta.souls, state.meta.relics],
   );
 
   const skills = useMemo<Skill[]>(
@@ -111,6 +111,8 @@ export function useGame() {
     sellItem: (item: Item) => dispatch({ type: 'SELL', itemId: item.id }),
     equipBest: () => dispatch({ type: 'EQUIP_BEST' }),
     sellJunk: () => dispatch({ type: 'SELL_JUNK' }),
+    enhance: (slot: ItemSlot) => dispatch({ type: 'ENHANCE', slot }),
+    claimDaily: () => dispatch({ type: 'CLAIM_DAILY' }),
     useAbility: (id: AbilityId) => dispatch({ type: 'USE_ABILITY', id }),
     setAutoAbilities: (value: boolean) => dispatch({ type: 'SET_AUTO_ABILITIES', value }),
     rebirth: () => dispatch({ type: 'REBIRTH' }),

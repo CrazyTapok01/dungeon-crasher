@@ -1,10 +1,12 @@
 import type { Item } from '../types';
-import { RARITY_COLORS, RARITY_NAME, itemScore } from '../gameData';
+import { ENHANCE, RARITY_COLORS, RARITY_NAME, enhanceCost, enhanced, itemScore, sellPrice } from '../gameData';
 
 interface Props {
   item: Item;
   compareTo?: Item;      // что надето в этом слоте — для сравнения
   equipped?: boolean;
+  gold?: number;
+  onEnhance?: () => void;
   onEquip?: () => void;
   onSell?: () => void;
 }
@@ -26,7 +28,9 @@ function Stats({ item }: { item: Item }) {
   );
 }
 
-export default function ItemCard({ item, compareTo, equipped, onEquip, onSell }: Props) {
+export default function ItemCard({ item: raw, compareTo, equipped, onEquip, onSell, gold = 0, onEnhance }: Props) {
+  const item = enhanced(raw);
+  const plus = raw.plus ?? 0;
   const c = RARITY_COLORS[item.rarity];
   const diff = onEquip ? Math.round(itemScore(item) - (compareTo ? itemScore(compareTo) : 0)) : 0;
   return (
@@ -39,15 +43,23 @@ export default function ItemCard({ item, compareTo, equipped, onEquip, onSell }:
       <div className="flex items-center gap-2">
         <div className="text-3xl bg-black/30 rounded-lg w-11 h-11 flex items-center justify-center shrink-0">{item.emoji}</div>
         <div className="flex-1 min-w-0">
-          <div className={`font-bold text-sm ${c.text} truncate`}>{item.name}</div>
+          <div className={`font-bold text-sm ${c.text} truncate`}>{item.name}{plus > 0 && <span className="text-amber-300"> +{plus}</span>}</div>
           <div className={`text-[10px] uppercase tracking-wide ${c.text} opacity-80`}>{RARITY_NAME[item.rarity]}</div>
           <Stats item={item} />
         </div>
       </div>
+      {onEnhance && (
+        plus >= ENHANCE.max
+          ? <div className="mt-2 text-center text-[11px] font-bold text-amber-300">⚒️ Максимальная заточка</div>
+          : <button onClick={onEnhance} disabled={gold < enhanceCost(raw)}
+              className="btn-fantasy w-full mt-2 py-1.5 rounded-lg text-xs font-bold disabled:opacity-50">
+              ⚒️ Заточить +{plus + 1} · 💰 {enhanceCost(raw)}
+            </button>
+      )}
       {(onEquip || onSell) && (
         <div className="mt-2 flex gap-1.5">
           {onEquip && <button onClick={onEquip} className="btn-fantasy flex-1 py-1.5 rounded-lg text-xs font-bold">Надеть</button>}
-          {onSell && <button onClick={onSell} className="btn-fantasy flex-1 py-1.5 rounded-lg text-xs font-bold">💰 {item.price}</button>}
+          {onSell && <button onClick={onSell} className="btn-fantasy flex-1 py-1.5 rounded-lg text-xs font-bold">💰 {sellPrice(raw)}</button>}
         </div>
       )}
     </div>

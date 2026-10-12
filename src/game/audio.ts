@@ -200,7 +200,9 @@ export function playForEvent(e: GameEvent): void {
     case 'hero_died':    play('death'); break;
     case 'rebirth':      play('rebirth'); break;
     case 'achievement':
-    case 'perk':         play('achievement'); break;
+    case 'perk':
+    case 'relic':
+    case 'quest':        play('achievement'); break;
     case 'ui':           play(e.kind === 'sell' ? 'coin' : 'buy'); break;
   }
 }

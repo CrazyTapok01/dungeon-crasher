@@ -1,6 +1,7 @@
 import type {
   AbilityDef, AbilityId, Cooldowns, Equipment, HeroState, Item, Meta, Monster, MonsterTrait,
-  Rarity, ShopUpgrade, SkillDef, SkillId, SkillLevels, UpgradeCounts, UpgradeKind,
+  Quest, QuestKind, Rarity, RelicDef, RelicId, ShopUpgrade, SkillDef, SkillId, SkillLevels,
+  UpgradeCounts, UpgradeKind,
 } from './types';
 
 // ════════════════════════════════════════════════════════════════
@@ -343,6 +344,13 @@ export function generateMonster(floor: number, stage: number): Monster {
   }
 
   const b = baseMonsterStats(floor, stage, isBoss);
+  if (!isBoss && !isElite && floor >= GOBLIN.minFloor && Math.random() < GOBLIN.chance) {
+    return {
+      name: 'Гоблин-казначей', emoji: '👺', hp: Math.round(b.hp * GOBLIN.hp), atk: Math.round(b.atk * GOBLIN.atk),
+      def: b.def, gold: Math.round(b.gold * GOBLIN.gold), xp: Math.round(b.xp * GOBLIN.xp),
+      isBoss: false, isElite: false, tier, goblin: true,
+    };
+  }
   const e = isElite ? ELITE : { hp: 1, atk: 1, def: 1, gold: 1, xp: 1 };
   const armored = trait === 'armored' ? 1.6 : 1;
 
@@ -463,7 +471,8 @@ export function generateItem(floor: number, boosted: boolean, minRarity: Rarity 
 }
 
 /** Оценка «полезности» предмета — чтобы сравнивать вещи и подсказывать улучшения. */
-export function itemScore(i: Item): number {
+export function itemScore(raw: Item): number {
+  const i = enhanced(raw);
   return (i.atk ?? 0) + (i.def ?? 0) * 1.2 + (i.hp ?? 0) * 0.15
     + (i.crit ?? 0) * 3 + (i.critdmg ?? 0) * 0.3 + (i.dodge ?? 0) * 3 + (i.vamp ?? 0) * 4;
 }
@@ -516,5 +525,127 @@ export function emptyMeta(): Meta {
   return {
     souls: 0, rebirths: 0, maxFloor: 1, bossKills: 0, elites: 0, crits: 0, deaths: 0,
     legendaries: 0, goldEarned: 0, abilitiesUsed: 0, achievements: [],
+    kills: 0, relics: emptyRelics(), quests: [], questsDone: 0,
+    daily: { last: '', streak: 0 }, goblins: 0,
   };
+}
+
+
+// ───────────────────────── реликвии ─────────────────────────
+// Падают с боссов (и редко с элитных), остаются после перерождения.
+// Повторная находка повышает уровень; на максимуме даёт души.
+
+export const RELIC_MAX = 10;
+export const RELIC_DROP = { boss: 0.45, elite: 0.05, maxedGoldPerFloor: 300 };
+
+export const RELICS: RelicDef[] = [
+  { id: 'fang',  name: 'Клык Бездны',        emoji: '🦷', desc: '+3% к атаке',          maxLevel: RELIC_MAX },
+  { id: 'heart', name: 'Сердце великана',    emoji: '🫀', desc: '+4% к макс. HP',       maxLevel: RELIC_MAX },
+  { id: 'coin',  name: 'Древняя монета',     emoji: '🪙', desc: '+4% к золоту',         maxLevel: RELIC_MAX },
+  { id: 'eye',   name: 'Глаз провидца',      emoji: '👁️', desc: '+1% к шансу крита',    maxLevel: RELIC_MAX },
+  { id: 'tome',  name: 'Запретный фолиант',  emoji: '📖', desc: '+4% к опыту',          maxLevel: RELIC_MAX },
+  { id: 'scale', name: 'Чешуя дракона',      emoji: '🐉', desc: '+2 к защите',          maxLevel: RELIC_MAX },
+  { id: 'blood', name: 'Кровавый камень',    emoji: '🩸', desc: '+0.4% вампиризма',     maxLevel: RELIC_MAX },
+  { id: 'wind',  name: 'Перо ветра',         emoji: '🪶', desc: '+0.5% к уклонению',    maxLevel: RELIC_MAX },
+];
+
+export function emptyRelics(): Record<RelicId, number> {
+  return { fang: 0, heart: 0, coin: 0, eye: 0, tome: 0, scale: 0, blood: 0, wind: 0 };
+}
+
+export const relicDef = (id: RelicId): RelicDef => RELICS.find(r => r.id === id)!;
+
+// ───────────────────────── задания ─────────────────────────
+// Всегда активны 3 задания. Выполнил — награда (души и золото), выдаётся новое, чуть сложнее.
+
+export const QUEST_SLOTS = 3;
+
+export const QUEST_INFO: Record<QuestKind, { emoji: string; text: (n: number) => string }> = {
+  kills:     { emoji: '⚔️', text: n => `Победи монстров: ${n}` },
+  bosses:    { emoji: '👑', text: n => `Победи боссов: ${n}` },
+  elites:    { emoji: '💀', text: n => `Победи элитных врагов: ${n}` },
+  crits:     { emoji: '💥', text: n => `Нанеси критических ударов: ${n}` },
+  abilities: { emoji: '✨', text: n => `Применить способностей: ${n}` },
+  floor:     { emoji: '🏰', text: n => `Достигни этажа ${n}` },
+};
+
+/** Новое задание нужного вида; сложность растёт с числом выполненных. */
+export function makeQuest(kind: QuestKind, meta: Meta): Quest {
+  const n = meta.questsDone;
+  const g = 1 + n * 0.12;
+  const counters: Record<QuestKind, number> = {
+    kills: meta.kills, bosses: meta.bossKills, elites: meta.elites,
+    crits: meta.crits, abilities: meta.abilitiesUsed, floor: 0,
+  };
+  const targets: Record<QuestKind, number> = {
+    kills: Math.round(40 * g), bosses: 2 + Math.floor(n / 4), elites: 5 + Math.floor(n / 2),
+    crits: Math.round(50 * g), abilities: 12 + n, floor: meta.maxFloor + 2 + Math.floor(n / 6),
+  };
+  const weight: Record<QuestKind, number> = { kills: 1, bosses: 2, elites: 1.5, crits: 1, abilities: 1, floor: 2.5 };
+  return {
+    kind, target: targets[kind], base: counters[kind],
+    souls: kind === 'bosses' || kind === 'floor' ? 1 + Math.floor(n / 20) : kind === 'elites' ? 1 : 0,
+    gold: Math.round(120 * meta.maxFloor * weight[kind] * g),
+  };
+}
+
+export function questProgress(q: Quest, meta: Meta): number {
+  const cur: Record<QuestKind, number> = {
+    kills: meta.kills, bosses: meta.bossKills, elites: meta.elites,
+    crits: meta.crits, abilities: meta.abilitiesUsed, floor: meta.maxFloor,
+  };
+  return Math.min(q.target, Math.max(0, cur[q.kind] - q.base));
+}
+
+/** Добирает недостающие задания (разных видов). */
+export function fillQuests(meta: Meta): Meta {
+  if (meta.quests.length >= QUEST_SLOTS) return meta;
+  const kinds = Object.keys(QUEST_INFO) as QuestKind[];
+  const quests = [...meta.quests];
+  while (quests.length < QUEST_SLOTS) {
+    const free = kinds.filter(k => !quests.some(q => q.kind === k));
+    quests.push(makeQuest(free[Math.floor(Math.random() * free.length)], meta));
+  }
+  return { ...meta, quests };
+}
+
+
+// ───────────────────────── заточка предметов ─────────────────────────
+// Надетую вещь можно усилить за золото: +10% к атаке, защите и HP предмета за уровень.
+// Заточка остаётся на вещи (даже если её снять), при продаже повышает цену.
+
+export const ENHANCE = { max: 10, perLevel: 0.1, costBase: 2, costGrowth: 1.5, sellPerLevel: 0.3 };
+
+/** Копия предмета с учётом заточки (для расчётов и показа). */
+export function enhanced(i: Item): Item {
+  const p = i.plus ?? 0;
+  if (p <= 0) return i;
+  const k = 1 + p * ENHANCE.perLevel;
+  const sc = (v?: number) => (v === undefined ? undefined : Math.round(v * k));
+  return { ...i, atk: sc(i.atk), def: sc(i.def), hp: sc(i.hp) };
+}
+
+export const enhanceCost = (i: Item): number =>
+  Math.round(i.price * ENHANCE.costBase * Math.pow(ENHANCE.costGrowth, i.plus ?? 0));
+
+export const sellPrice = (i: Item): number =>
+  Math.round(i.price * (1 + (i.plus ?? 0) * ENHANCE.sellPerLevel));
+
+// ───────────────────────── гоблин-казначей и ежедневная награда ─────────────────────────
+
+export const GOBLIN = { chance: 0.04, minFloor: 2, hp: 0.6, atk: 0.4, gold: 10, xp: 2 };
+
+export const DAILY = { goldPerFloor: 400, streakCap: 7, soulsEvery: 7, soulsBonus: 3 };
+
+/** Сегодняшняя дата по часам игрока: «2026-10-12». */
+export const todayKey = (): string => new Date().toLocaleDateString('sv');
+
+/** Награда за следующий заход: считаем серию дней подряд. */
+export function dailyPreview(meta: Meta, today = todayKey()): { available: boolean; streak: number; gold: number; souls: number } {
+  const last = meta.daily.last;
+  const y = new Date(); y.setDate(y.getDate() - 1);
+  const continues = last === y.toLocaleDateString('sv');
+  const streak = last === today ? meta.daily.streak : continues ? meta.daily.streak + 1 : 1;
+  const gold = Math.round(DAILY.goldPerFloor * meta.maxFloor * (1 + (Math.min(streak, DAILY.streakCap) - 1) * 0.25));
+  return { available: last !== today, streak, gold, souls: streak % DAILY.soulsEvery === 0 ? DAILY.soulsBonus : 0 };
 }

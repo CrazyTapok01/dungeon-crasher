@@ -1,6 +1,6 @@
 import type {
   AbilityId, Cooldowns, Equipment, GameEvent, GameEventBody, HeroState, HeroStats, HeroStatus,
-  Item, LogEntry, LogType, Meta, Monster, MonsterAi, OfflineReport, Settings,
+  Item, ItemSlot, LogEntry, LogType, Meta, Monster, MonsterAi, OfflineReport, Settings,
   SkillId, SkillLevels, UpgradeCounts, UpgradeKind,
 } from '../types';
 import {
@@ -9,7 +9,7 @@ import {
   SHIELD, SHOP_POTION, SHOP_UPGRADES, SKILLS, STAGES_PER_FLOOR, STRIKE, SWIFT_DODGE, THORNS_FRAC,
   TRAITS, abilityDef, abilityUnlocked, baseMonsterStats, biomeForFloor, chestCost, chestMinRarity,
   deathGoldKept, emptyCooldowns, emptyMeta, emptySkillLevels, emptyUpgradeCounts, generateItem,
-  generateMonster, inventoryLimit, itemScore, junkItems, skillCost, skillMaxLevel, skillUnlocked,
+  generateMonster, ENHANCE, dailyPreview, enhanceCost, sellPrice, todayKey, inventoryLimit, RELICS, RELIC_DROP, RELIC_MAX, QUEST_INFO, fillQuests, questProgress, itemScore, junkItems, skillCost, skillMaxLevel, skillUnlocked,
   soulsForFloor, upgradeAmount, upgradeCost,
 } from '../gameData';
 import { computeStats } from './stats';
@@ -68,6 +68,8 @@ export type Action =
   | { type: 'EQUIP_BEST' }
   | { type: 'SELL'; itemId: string }
   | { type: 'SELL_JUNK' }
+  | { type: 'ENHANCE'; slot: ItemSlot }
+  | { type: 'CLAIM_DAILY' }
   | { type: 'REBIRTH' }
   | { type: 'OFFLINE'; seconds: number }       // игрока не было seconds секунд
   | { type: 'DISMISS_OFFLINE' }
@@ -82,7 +84,7 @@ const newId = () => ++nextId;
 const NO_EVENTS: GameEvent[] = [];
 
 const statsOf = (s: GameState): HeroStats =>
-  computeStats(s.hero, s.skillLevels, s.equipped, s.meta.souls);
+  computeStats(s.hero, s.skillLevels, s.equipped, s.meta.souls, s.meta.relics);
 
 function withLog(s: GameState, text: string, type: LogType = 'info'): GameState {
   return { ...s, log: [{ id: newId(), text, type }, ...s.log].slice(0, LOG_LIMIT) };
@@ -161,7 +163,7 @@ function createState(save: SaveData | null): GameState {
     skillLevels: save?.skillLevels ?? emptySkillLevels(),
     equipped: save?.equipped ?? {},
     inventory: save?.inventory ?? [],
-    meta: { ...meta, maxFloor: Math.max(meta.maxFloor, hero.floor) },
+    meta: fillQuests({ ...meta, maxFloor: Math.max(meta.maxFloor, hero.floor) }),
     upgradeCounts: save?.upgradeCounts ?? emptyUpgradeCounts(),
     settings: save?.settings ?? { autoAbilities: true },
     monster,
@@ -443,11 +445,14 @@ function defeatMonster(state: GameState): GameState {
     meta: {
       ...s.meta,
       goldEarned: s.meta.goldEarned + gold,
+      kills: s.meta.kills + 1,
+      goblins: s.meta.goblins + (monster.goblin ? 1 : 0),
       bossKills: s.meta.bossKills + (monster.isBoss ? 1 : 0),
       elites: s.meta.elites + (monster.isElite ? 1 : 0),
     },
   };
   s = withLog(s, `💰 +${gold} золота, +${xp} опыта`, 'loot');
+  if (monster.goblin) s = withLog(s, '👺 Гоблин-казначей выронил мешок с золотом!', 'loot');
   s = emit(s, { type: 'monster_killed', emoji: monster.emoji, boss: monster.isBoss, elite: monster.isElite, gold, xp });
 
   // 2. новый уровень: немного лечит
@@ -466,6 +471,10 @@ function defeatMonster(state: GameState): GameState {
   if (Math.random() < dropChance) {
     s = dropItem(s, generateItem(s.hero.floor, monster.isBoss || monster.isElite));
   }
+
+  // 3б. реликвия (боссы — часто, элитные — редко)
+  const relicChance = monster.isBoss ? RELIC_DROP.boss : monster.isElite ? RELIC_DROP.elite : 0;
+  if (relicChance > 0 && Math.random() < relicChance) s = dropRelic(s);
 
   // 4. зелье
   if (Math.random() < DROP.potionChance) {
@@ -489,6 +498,39 @@ function defeatMonster(state: GameState): GameState {
     s = { ...s, hero: { ...s.hero, stage: stage + 1 } };
   }
   return spawnMonster(s);
+}
+
+/** Реликвия: новая или +1 уровень; на максимуме — души. */
+function dropRelic(s: GameState): GameState {
+  const def = RELICS[Math.floor(Math.random() * RELICS.length)];
+  const lvl = s.meta.relics[def.id];
+  if (lvl >= RELIC_MAX) {
+    const bonus = RELIC_DROP.maxedGoldPerFloor * s.hero.floor;
+    return withLog(withGold(s, bonus), `${def.emoji} Реликвия «${def.name}» уже на максимуме: +${bonus} золота`, 'boss');
+  }
+  s = { ...s, meta: { ...s.meta, relics: { ...s.meta.relics, [def.id]: lvl + 1 } } };
+  s = withLog(s, `${def.emoji} РЕЛИКВИЯ! «${def.name}» → уровень ${lvl + 1} (${def.desc})`, 'boss');
+  return emit(s, { type: 'relic', key: def.id, level: lvl + 1 });
+}
+
+// ───────────────────────── задания ─────────────────────────
+
+function checkQuests(s: GameState): GameState {
+  if (!s.meta.quests.some(q => questProgress(q, s.meta) >= q.target)) return s;
+  let next = s;
+  const active = [];
+  for (const q of s.meta.quests) {
+    if (questProgress(q, next.meta) < q.target) { active.push(q); continue; }
+    const info = QUEST_INFO[q.kind];
+    next = { ...next, meta: { ...next.meta, souls: next.meta.souls + q.souls, questsDone: next.meta.questsDone + 1 } };
+    next = withGold(next, q.gold);
+    next = withLog(next, `📜 Задание выполнено: ${info.text(q.target)}. Награда: ${q.gold} золота${q.souls ? `, ${q.souls} душ` : ''}`, 'boss');
+    next = emit(next, { type: 'quest', text: `📜 Задание выполнено! +${q.gold} 💰${q.souls ? ` +${q.souls} 👻` : ''}` });
+  }
+  // Новые задания делаем после того, как пересчитали счётчики — база уже актуальна
+  let meta = { ...next.meta, quests: active };
+  meta = fillQuests(meta);
+  return { ...next, meta };
 }
 
 /** Кладёт предмет в сумку; если сумка полна — сразу продаёт. */
@@ -532,7 +574,7 @@ function equipItem(state: GameState, item: Item): GameState {
 function sellItems(state: GameState, items: Item[]): GameState {
   if (items.length === 0) return state;
   const ids = new Set(items.map(i => i.id));
-  const total = items.reduce((sum, i) => sum + i.price, 0);
+  const total = items.reduce((sum, i) => sum + sellPrice(i), 0);
   const s = withGold({ ...state, inventory: state.inventory.filter(i => !ids.has(i.id)) }, total);
   return withLog(
     s,
@@ -615,6 +657,25 @@ function reduce(state: GameState, action: Action): GameState {
       return { ...s, chestResult: item };
     }
 
+    case 'ENHANCE': {
+      const item = state.equipped[action.slot];
+      if (!item || (item.plus ?? 0) >= ENHANCE.max) return state;
+      const cost = enhanceCost(item);
+      if (state.hero.gold < cost) return state;
+      const upgraded: Item = { ...item, plus: (item.plus ?? 0) + 1 };
+      const s = withGold({ ...fresh, equipped: { ...state.equipped, [action.slot]: upgraded } }, -cost);
+      return emit(withLog(s, `⚒️ ${item.name} заточен до +${upgraded.plus}!`, 'loot'), { type: 'ui', kind: 'buy' });
+    }
+
+    case 'CLAIM_DAILY': {
+      const d = dailyPreview(state.meta);
+      if (!d.available) return state;
+      let s = withGold(fresh, d.gold);
+      s = { ...s, meta: { ...s.meta, souls: s.meta.souls + d.souls, daily: { last: todayKey(), streak: d.streak } } };
+      s = withLog(s, `🎁 Ежедневная награда (день ${d.streak}): ${d.gold} золота${d.souls ? `, ${d.souls} душ` : ''}`, 'boss');
+      return emit(s, { type: 'quest', text: `🎁 День ${d.streak}: +${d.gold} 💰${d.souls ? ` +${d.souls} 👻` : ''}` });
+    }
+
     case 'EQUIP': {
       const item = state.inventory.find(i => i.id === action.itemId);
       return item ? emit(equipItem(fresh, item), { type: 'ui', kind: 'equip' }) : state;
@@ -682,5 +743,5 @@ function reduce(state: GameState, action: Action): GameState {
 
 export function gameReducer(state: GameState, action: Action): GameState {
   const next = reduce(state, action);
-  return next === state ? state : checkAchievements(next);
+  return next === state ? state : checkQuests(checkAchievements(next));
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useGame } from './hooks/useGame';
-import { ACHIEVEMENTS, PERKS, PRESTIGE, SKILLS, inventoryLimit, itemScore, skillCost, soulsForFloor } from './gameData';
+import { ACHIEVEMENTS, PERKS, PRESTIGE, RELICS, dailyPreview, SKILLS, inventoryLimit, itemScore, skillCost, soulsForFloor } from './gameData';
 import { isMuted, play, setMuted, unlockAudio } from './game/audio';
 import BattleScene from './components/BattleScene';
 import AbilityBar from './components/AbilityBar';
@@ -40,17 +40,23 @@ export default function App() {
 
   // Всплывающая плашка при получении достижения
   useEffect(() => {
-    const ev = state.events.find(e => e.type === 'achievement' || e.type === 'perk');
-    if (!ev || (ev.type !== 'achievement' && ev.type !== 'perk')) return;
+    const ev = state.events.find(e => e.type === 'achievement' || e.type === 'perk' || e.type === 'relic' || e.type === 'quest');
+    if (!ev) return;
     if (ev.type === 'perk') {
       const p = PERKS.find(x => x.id === ev.key);
       if (!p) return;
       setToast({ id: ev.id, text: `🌟 Новая награда: ${p.emoji} ${p.name}` });
-    } else {
+    } else if (ev.type === 'relic') {
+      const r = RELICS.find(x => x.id === ev.key);
+      if (!r) return;
+      setToast({ id: ev.id, text: `${r.emoji} Реликвия: ${r.name} (ур. ${ev.level})` });
+    } else if (ev.type === 'quest') {
+      setToast({ id: ev.id, text: ev.text });
+    } else if (ev.type === 'achievement') {
       const a = ACHIEVEMENTS.find(x => x.id === ev.key);
       if (!a) return;
       setToast({ id: ev.id, text: `🏆 Достижение: ${a.emoji} ${a.name}` });
-    }
+    } else return;
     const t = setTimeout(() => setToast(null), 3200);
     return () => clearTimeout(t);
   }, [state.events]);
@@ -65,7 +71,7 @@ export default function App() {
     hero: hero.gold >= cheapest,
     inventory: (['weapon', 'armor', 'amulet'] as const).some(slot =>
       state.inventory.some(i => i.slot === slot && (!state.equipped[slot] || itemScore(i) > itemScore(state.equipped[slot]!)))),
-    more: soulsForFloor(hero.floor, state.meta.rebirths) > 0 && hero.floor >= PRESTIGE.minFloor + 4,
+    more: (soulsForFloor(hero.floor, state.meta.rebirths) > 0 && hero.floor >= PRESTIGE.minFloor + 4) || dailyPreview(state.meta).available,
   };
 
   return (
@@ -120,7 +126,7 @@ export default function App() {
           <InventoryPanel
             inventory={state.inventory} limit={inventoryLimit(state.meta.rebirths)} equipped={state.equipped}
             onEquip={game.equipItem} onSell={game.sellItem}
-            onEquipBest={game.equipBest} onSellJunk={game.sellJunk}
+            onEquipBest={game.equipBest} onSellJunk={game.sellJunk} gold={hero.gold} onEnhance={game.enhance}
           />
         )}
         {tab === 'shop' && (
@@ -133,7 +139,7 @@ export default function App() {
         {tab === 'more' && (
           <MorePanel
             hero={hero} meta={state.meta} muted={muted} autoAbilities={state.settings.autoAbilities}
-            onRebirth={() => setConfirm('rebirth')} onReset={() => setConfirm('reset')}
+            onRebirth={() => setConfirm('rebirth')} onClaimDaily={game.claimDaily} onReset={() => setConfirm('reset')}
             onToggleSound={toggleSound} onToggleAuto={() => game.setAutoAbilities(!state.settings.autoAbilities)}
           />
         )}

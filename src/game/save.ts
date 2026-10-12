@@ -1,9 +1,9 @@
 import type {
-  Equipment, HeroState, Item, ItemSlot, Meta, Settings, SkillLevels, UpgradeCounts,
+  Equipment, HeroState, Item, ItemSlot, Meta, QuestKind, Settings, SkillLevels, UpgradeCounts,
 } from '../types';
 import {
-  ACHIEVEMENTS, INITIAL_HERO, MAX_PERK_LEVELS, RARITY_NAME, SKILLS, STAGES_PER_FLOOR,
-  emptyMeta, emptySkillLevels,
+  ACHIEVEMENTS, INITIAL_HERO, MAX_PERK_LEVELS, QUEST_INFO, RARITY_NAME, RELICS, RELIC_MAX, SKILLS,
+  STAGES_PER_FLOOR, emptyMeta, emptyRelics, emptySkillLevels, fillQuests,
 } from '../gameData';
 
 const SAVE_KEY = 'dungeonCrasherSave_v3';
@@ -86,7 +86,10 @@ function sanitizeEquipment(raw: unknown): Equipment {
 function sanitizeMeta(raw: unknown, hero: HeroState): Meta {
   const r = asRecord(raw);
   const known = new Set(ACHIEVEMENTS.map(a => a.id));
-  return {
+  const relics = emptyRelics();
+  const rr = asRecord(r.relics);
+  for (const def of RELICS) relics[def.id] = clamp(Math.floor(num(rr[def.id])), 0, RELIC_MAX);
+  const meta: Meta = {
     ...emptyMeta(),
     souls: num(r.souls), rebirths: num(r.rebirths), maxFloor: Math.max(1, num(r.maxFloor, 1), hero.floor),
     bossKills: num(r.bossKills), elites: num(r.elites), crits: num(r.crits), deaths: num(r.deaths),
@@ -94,7 +97,25 @@ function sanitizeMeta(raw: unknown, hero: HeroState): Meta {
     achievements: Array.isArray(r.achievements)
       ? r.achievements.filter((a): a is string => typeof a === 'string' && known.has(a))
       : [],
+    kills: num(r.kills),
+    relics,
+    quests: Array.isArray(r.quests)
+      ? r.quests.map(asRecord)
+          .filter(q => (q.kind as string) in QUEST_INFO && num(q.target) > 0)
+          .slice(0, 3)
+          .map(q => ({
+            kind: q.kind as QuestKind, target: num(q.target), base: num(q.base),
+            souls: num(q.souls), gold: num(q.gold),
+          }))
+      : [],
+    questsDone: num(r.questsDone),
+    goblins: num(r.goblins),
+    daily: {
+      last: typeof asRecord(r.daily).last === 'string' ? (asRecord(r.daily).last as string) : '',
+      streak: num(asRecord(r.daily).streak),
+    },
   };
+  return fillQuests(meta);
 }
 
 function sanitizeCounts(raw: unknown): UpgradeCounts {
