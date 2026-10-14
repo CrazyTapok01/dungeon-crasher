@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useGame } from './hooks/useGame';
-import { ACHIEVEMENTS, PERKS, PRESTIGE, RELICS, dailyPreview, SKILLS, inventoryLimit, itemScore, skillCost, soulsForFloor } from './gameData';
+import { ACHIEVEMENTS, PERKS, PRESTIGE, RELICS, dailyPreview, spentTalents, talentPoints, SKILLS, inventoryLimit, itemScore, skillCost, soulsForFloor } from './gameData';
 import { isMuted, play, setMuted, unlockAudio } from './game/audio';
 import BattleScene from './components/BattleScene';
 import AbilityBar from './components/AbilityBar';
@@ -14,6 +14,7 @@ import OfflineModal from './components/OfflineModal';
 import SplashScreen from './components/SplashScreen';
 import ClassSelect from './components/ClassSelect';
 import ElementBar from './components/ElementBar';
+import TalentsPanel from './components/TalentsPanel';
 import CraftPanel from './components/CraftPanel';
 
 type Tab = 'combat' | 'hero' | 'inventory' | 'craft' | 'shop' | 'more';
@@ -72,7 +73,7 @@ export default function App() {
   // Точки-подсказки на вкладках
   const cheapest = Math.min(...SKILLS.filter(d => state.skillLevels[d.id] < d.maxLevel).map(d => skillCost(d, state.skillLevels[d.id])));
   const badge: Partial<Record<Tab, boolean>> = {
-    hero: hero.gold >= cheapest,
+    hero: hero.gold >= cheapest || (state.heroClass !== null && talentPoints(hero.level) - spentTalents(state.talents) > 0),
     inventory: (['weapon', 'armor', 'amulet'] as const).some(slot =>
       state.inventory.some(i => i.slot === slot && (!state.equipped[slot] || itemScore(i) > itemScore(state.equipped[slot]!)))),
     more: (soulsForFloor(hero.floor, state.meta.rebirths) > 0 && hero.floor >= PRESTIGE.minFloor + 4) || dailyPreview(state.meta).available,
@@ -128,13 +129,16 @@ export default function App() {
           </div>
         )}
         {tab === 'hero' && (
-          <SkillsPanel skills={game.skills} gold={hero.gold} hero={hero} stats={stats} souls={state.meta.souls} onBuy={game.buySkill} />
+          <>
+            <TalentsPanel heroClass={state.heroClass} level={hero.level} talents={state.talents} onBuy={game.buyTalent} />
+            <SkillsPanel skills={game.skills} gold={hero.gold} hero={hero} stats={stats} souls={state.meta.souls} onBuy={game.buySkill} />
+          </>
         )}
         {tab === 'inventory' && (
           <InventoryPanel
             inventory={state.inventory} limit={inventoryLimit(state.meta.rebirths)} equipped={state.equipped}
             onEquip={game.equipItem} onSell={game.sellItem}
-            onEquipBest={game.equipBest} onSellJunk={game.sellJunk} gold={hero.gold} onEnhance={game.enhance}
+            onEquipBest={game.equipBest} onSellJunk={game.sellJunk} gold={hero.gold} onEnhance={game.enhance} heroClass={state.heroClass}
           />
         )}
         {tab === 'craft' && (
@@ -150,7 +154,7 @@ export default function App() {
         {tab === 'more' && (
           <MorePanel
             hero={hero} meta={state.meta} muted={muted} autoAbilities={state.settings.autoAbilities}
-            onRebirth={() => setConfirm('rebirth')} onClaimDaily={game.claimDaily} onReset={() => setConfirm('reset')}
+            onRebirth={() => setConfirm('rebirth')} onClaimDaily={game.claimDaily} onSetPet={game.setPet} onReset={() => setConfirm('reset')}
             onToggleSound={toggleSound} onToggleAuto={() => game.setAutoAbilities(!state.settings.autoAbilities)}
           />
         )}

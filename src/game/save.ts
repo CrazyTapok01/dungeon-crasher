@@ -3,7 +3,7 @@ import type {
 } from '../types';
 import {
   ACHIEVEMENTS, INITIAL_HERO, MAX_PERK_LEVELS, QUEST_INFO, RARITY_NAME, RELICS, RELIC_MAX, SKILLS,
-  STAGES_PER_FLOOR, emptyMeta, emptyRelics, emptySkillLevels, fillQuests,
+  STAGES_PER_FLOOR, PETS, PET_MAX, TALENTS, emptyPets, emptyMeta, emptyRelics, emptySkillLevels, fillQuests,
 } from '../gameData';
 
 const SAVE_KEY = 'dungeonCrasherSave_v3';
@@ -21,6 +21,7 @@ export interface SaveData {
   upgradeCounts: UpgradeCounts;
   settings: Settings;
   heroClass?: ClassId | null;
+  talents?: Record<string, number>;
   lastSeen?: number; // когда игру закрыли (мс) — для офлайн-награды
 }
 
@@ -90,6 +91,10 @@ function sanitizeMeta(raw: unknown, hero: HeroState): Meta {
   const relics = emptyRelics();
   const rr = asRecord(r.relics);
   for (const def of RELICS) relics[def.id] = clamp(Math.floor(num(rr[def.id])), 0, RELIC_MAX);
+  const pets = emptyPets();
+  const pr = asRecord(r.pets);
+  for (const p of PETS) pets[p.id] = clamp(Math.floor(num(pr[p.id])), 0, PET_MAX);
+  const ap = PETS.find(p => p.id === r.activePet && pets[p.id] > 0);
   const meta: Meta = {
     ...emptyMeta(),
     souls: num(r.souls), rebirths: num(r.rebirths), maxFloor: Math.max(1, num(r.maxFloor, 1), hero.floor),
@@ -111,12 +116,20 @@ function sanitizeMeta(raw: unknown, hero: HeroState): Meta {
       : [],
     questsDone: num(r.questsDone),
     goblins: num(r.goblins),
+    pets, activePet: ap ? ap.id : null, egg: typeof r.egg === 'number' ? clamp(Math.floor(r.egg), -1, 999) : -1,
     daily: {
       last: typeof asRecord(r.daily).last === 'string' ? (asRecord(r.daily).last as string) : '',
       streak: num(asRecord(r.daily).streak),
     },
   };
   return fillQuests(meta);
+}
+
+function sanitizeTalents(raw: unknown): Record<string, number> {
+  const r = asRecord(raw);
+  const out: Record<string, number> = {};
+  for (const t of TALENTS) { const v = clamp(Math.floor(num(r[t.id])), 0, t.max); if (v > 0) out[t.id] = v; }
+  return out;
 }
 
 function sanitizeCounts(raw: unknown): UpgradeCounts {
@@ -136,6 +149,7 @@ function fromRecord(d: Record<string, unknown>): SaveData {
     upgradeCounts: sanitizeCounts(d.upgradeCounts),
     settings: { autoAbilities: settings.autoAbilities !== false, autoElement: settings.autoElement === true },
     heroClass: d.heroClass === 'warrior' || d.heroClass === 'mage' || d.heroClass === 'thief' ? d.heroClass : null,
+    talents: sanitizeTalents(d.talents),
     lastSeen: typeof d.lastSeen === 'number' ? d.lastSeen : undefined,
   };
 }

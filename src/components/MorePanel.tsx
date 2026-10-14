@@ -1,6 +1,7 @@
 import type { HeroState, Meta } from '../types';
 import { setGfxSetting, useGfx, type GfxSetting } from '../game/perf';
 import QuestsPanel from './QuestsPanel';
+import PetsPanel from './PetsPanel';
 import { ACHIEVEMENTS, PERKS, PRESTIGE, soulsForFloor } from '../gameData';
 
 interface Props {
@@ -10,6 +11,7 @@ interface Props {
   autoAbilities: boolean;
   onRebirth: () => void;
   onClaimDaily: () => void;
+  onSetPet: (id: import('../types').PetId | null) => void;
   onReset: () => void;
   onToggleSound: () => void;
   onToggleAuto: () => void;
@@ -18,7 +20,7 @@ interface Props {
 const GFX_LABEL: Record<GfxSetting, string> = { auto: 'Авто', high: 'Высокая', low: 'Низкая' };
 const NEXT_GFX: Record<GfxSetting, GfxSetting> = { auto: 'high', high: 'low', low: 'auto' };
 
-export default function MorePanel({ hero, meta, muted, autoAbilities, onRebirth, onClaimDaily, onReset, onToggleSound, onToggleAuto }: Props) {
+export default function MorePanel({ hero, meta, muted, autoAbilities, onRebirth, onClaimDaily, onSetPet, onReset, onToggleSound, onToggleAuto }: Props) {
   const gfx = useGfx();
   const gain = soulsForFloor(hero.floor, meta.rebirths);
   const nextPerk = PERKS.find(p => p.rebirths > meta.rebirths);
@@ -51,6 +53,8 @@ export default function MorePanel({ hero, meta, muted, autoAbilities, onRebirth,
       </div>
 
       <QuestsPanel meta={meta} onClaimDaily={onClaimDaily} />
+
+      <PetsPanel meta={meta} onSet={onSetPet} />
 
       {/* ── путь перерождений ── */}
       <div className="panel rounded-xl p-3 border-purple-600/40">

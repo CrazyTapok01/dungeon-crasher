@@ -15,7 +15,7 @@ function HeroPanel({ hero, stats, status, heroClass }: Props) {
   return (
     <div className="hud">
       <div className="hud-title">
-        <span className="hud-name">{heroClass ? classDef(heroClass).emoji : '🛡️'} Крушитель{heroClass && <span className="text-amber-300 text-xs font-bold"> · {classDef(heroClass).name}</span>}</span>
+        <span className="hud-name">{heroClass ? classDef(heroClass).emoji : '🛡️'} Крушитель</span>
         <span className="hud-lvl">Ур. {hero.level}</span>
       </div>
       <StatBar
@@ -24,6 +24,7 @@ function HeroPanel({ hero, stats, status, heroClass }: Props) {
         label={`${hero.hp} / ${stats.maxHp}`}
       />
       <div className="hud-chips">
+        {heroClass && <span className="chip chip-gold">{classDef(heroClass).name}</span>}
         {status.rageCharges > 0 && <span className="chip chip-red">😡 ×{status.rageCharges}</span>}
         {status.shieldCharges > 0 && <span className="chip chip-blue">🛡️ ×{status.shieldCharges}</span>}
         {status.poisonTurns > 0 && <span className="chip chip-green">🤢 яд ×{status.poisonTurns}</span>}

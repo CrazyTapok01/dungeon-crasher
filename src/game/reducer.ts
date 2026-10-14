@@ -1,5 +1,5 @@
 import type {
-  AbilityId, ClassId, Cooldowns, Element, Equipment, GameEvent, GameEventBody, HeroState, HeroStats, HeroStatus,
+  AbilityId, ClassId, PetId, Cooldowns, Element, Equipment, GameEvent, GameEventBody, HeroState, HeroStats, HeroStatus,
   Item, ItemSlot, LogEntry, Rarity, LogType, Meta, Monster, MonsterAi, OfflineReport, Settings,
   SkillId, SkillLevels, UpgradeCounts, UpgradeKind,
 } from '../types';
@@ -9,10 +9,10 @@ import {
   SHIELD, SHOP_POTION, SHOP_UPGRADES, SKILLS, STAGES_PER_FLOOR, STRIKE, SWIFT_DODGE, THORNS_FRAC,
   TRAITS, abilityDef, abilityUnlocked, baseMonsterStats, biomeForFloor, chestCost, chestMinRarity,
   deathGoldKept, emptyCooldowns, emptyMeta, emptySkillLevels, emptyUpgradeCounts, generateItem,
-  generateMonster, CLASSES, CLASS_BONUS, CRAFT_RECIPES, counterOf, craftItem, craftGroups, ENHANCE, dailyPreview, enhanceCost, sellPrice, todayKey, inventoryLimit, RELICS, RELIC_DROP, RELIC_MAX, QUEST_INFO, fillQuests, questProgress, itemScore, junkItems, skillCost, skillMaxLevel, skillUnlocked,
+  generateMonster, EGG, PET_MAX, PETS, TALENTS, TALENT_MAX, petDef, spentTalents, talentBonus, talentPoints, CLASSES, CLASS_BONUS, CRAFT_RECIPES, counterOf, craftItem, craftGroups, ENHANCE, dailyPreview, enhanceCost, sellPrice, todayKey, inventoryLimit, RELICS, RELIC_DROP, RELIC_MAX, QUEST_INFO, fillQuests, questProgress, itemScore, junkItems, skillCost, skillMaxLevel, skillUnlocked,
   soulsForFloor, upgradeAmount, upgradeCost,
 } from '../gameData';
-import { computeStats } from './stats';
+import { computeStats, type Extras } from './stats';
 import { applyXp, rollHeroAttack, rollMonsterAttack } from './combat';
 import { loadGame, type SaveData } from './save';
 
@@ -37,6 +37,7 @@ export interface GameState {
   upgradeCounts: UpgradeCounts;
   settings: Settings;
   heroClass: ClassId | null; // null — класс ещё не выбран
+  talents: Record<string, number>; // вложенные очки талантов (сбрасываются перерождением)
   heroElement: Element;      // стихия атак героя
 
   // ── текущий бой (не сохраняется) ──
@@ -73,6 +74,8 @@ export type Action =
   | { type: 'ENHANCE'; slot: ItemSlot }
   | { type: 'CLAIM_DAILY' }
   | { type: 'SET_CLASS'; id: ClassId }
+  | { type: 'BUY_TALENT'; id: string }
+  | { type: 'SET_PET'; id: PetId | null }
   | { type: 'SET_ELEMENT'; element: Element }
   | { type: 'SET_AUTO_ELEMENT'; value: boolean }
   | { type: 'CRAFT'; slot: ItemSlot; from: Rarity }
@@ -89,8 +92,16 @@ const newId = () => ++nextId;
 
 const NO_EVENTS: GameEvent[] = [];
 
+/** Что ещё усиливает героя: реликвии, класс, таланты, питомец. */
+export const extrasOf = (s: Pick<GameState, 'heroClass' | 'talents' | 'meta'>): Extras => ({
+  relics: s.meta.relics,
+  heroClass: s.heroClass,
+  talents: s.talents,
+  pet: s.meta.activePet && s.meta.pets[s.meta.activePet] > 0 ? { id: s.meta.activePet, level: s.meta.pets[s.meta.activePet] } : null,
+});
+
 const statsOf = (s: GameState): HeroStats =>
-  computeStats(s.hero, s.skillLevels, s.equipped, s.meta.souls, s.meta.relics, s.heroClass);
+  computeStats(s.hero, s.skillLevels, s.equipped, s.meta.souls, extrasOf(s));
 
 function withLog(s: GameState, text: string, type: LogType = 'info'): GameState {
   return { ...s, log: [{ id: newId(), text, type }, ...s.log].slice(0, LOG_LIMIT) };
@@ -174,6 +185,7 @@ function createState(save: SaveData | null): GameState {
     upgradeCounts: save?.upgradeCounts ?? emptyUpgradeCounts(),
     settings: save?.settings ?? { autoAbilities: true, autoElement: false },
     heroClass: save?.heroClass ?? null,
+    talents: save?.talents ?? {},
     heroElement: counterOf(monster.element),
     monster,
     monsterId: newId(),
@@ -353,7 +365,7 @@ function hitMonster(
 
 /** Общие параметры удара героя: стихия и магия мага (игнор брони). */
 function atkOpts(s: GameState, ignoreDef = 0) {
-  const pierce = s.heroClass === 'mage' ? CLASS_BONUS.magePierce : 0;
+  const pierce = (s.heroClass === 'mage' ? CLASS_BONUS.magePierce : 0) + talentBonus(s.talents, 'pierce') / 100;
   return { element: s.heroElement, ignoreDef: 1 - (1 - ignoreDef) * (1 - pierce) };
 }
 
@@ -373,7 +385,7 @@ function heroAttack(state: GameState): GameState {
   if (raging) s = { ...s, heroStatus: { ...s.heroStatus, rageCharges: s.heroStatus.rageCharges - 1 } };
   s = hitMonster(s, rollHeroAttack(stats, monster, { ...atkOpts(s), ...(raging ? { mult: RAGE.mult } : {}) }), false);
   // Вор: шанс ударить ещё раз подряд
-  if (s.heroClass === 'thief' && !s.isDead && s.monsterId === state.monsterId && Math.random() < CLASS_BONUS.thiefSpeed) {
+  if (s.heroClass === 'thief' && !s.isDead && s.monsterId === state.monsterId && Math.random() < CLASS_BONUS.thiefSpeed + talentBonus(s.talents, 'speed') / 100) {
     s = { ...s, turn: 'hero' };
   }
   return s;
@@ -492,6 +504,9 @@ function defeatMonster(state: GameState): GameState {
     s = dropItem(s, generateItem(s.hero.floor, monster.isBoss || monster.isElite));
   }
 
+  // 3а. яйцо питомца: с босса, потом греется убийствами
+  s = tickEgg(s, monster.isBoss);
+
   // 3б. реликвия (боссы — часто, элитные — редко)
   const relicChance = monster.isBoss ? RELIC_DROP.boss : monster.isElite ? RELIC_DROP.elite : 0;
   if (relicChance > 0 && Math.random() < relicChance) s = dropRelic(s);
@@ -518,6 +533,27 @@ function defeatMonster(state: GameState): GameState {
     s = { ...s, hero: { ...s.hero, stage: stage + 1 } };
   }
   return spawnMonster(s);
+}
+
+function tickEgg(s: GameState, boss: boolean): GameState {
+  let { egg } = s.meta;
+  if (egg < 0) {
+    if (!boss || Math.random() >= EGG.chance) return s;
+    s = withLog(s, `🥚 С босса упало яйцо! Оно проклюнется через ${EGG.kills} побед`, 'boss');
+    return emit({ ...s, meta: { ...s.meta, egg: 0 } }, { type: 'quest', text: '🥚 Найдено яйцо питомца!' });
+  }
+  egg += 1;
+  if (egg < EGG.kills) return { ...s, meta: { ...s.meta, egg } };
+  const def = PETS[Math.floor(Math.random() * PETS.length)];
+  const lvl = s.meta.pets[def.id];
+  const meta = {
+    ...s.meta, egg: -1,
+    pets: { ...s.meta.pets, [def.id]: Math.min(PET_MAX, lvl + 1) },
+    activePet: s.meta.activePet ?? def.id,
+  };
+  s = { ...s, meta };
+  const text = lvl === 0 ? `${def.emoji} Вылупился питомец: ${def.name}!` : lvl >= PET_MAX ? `${def.emoji} ${def.name} уже на максимуме` : `${def.emoji} ${def.name} вырос до уровня ${lvl + 1}!`;
+  return emit(withLog(s, text, 'boss'), { type: 'quest', text });
 }
 
 /** Реликвия: новая или +1 уровень; на максимуме — души. */
@@ -701,6 +737,20 @@ function reduce(state: GameState, action: Action): GameState {
       const ids = new Set([a.id, b.id]);
       const s = { ...fresh, inventory: [result, ...state.inventory.filter(i => !ids.has(i.id))] };
       return emit(withLog(s, `🔨 Создано: ${result.name} (${RARITY_NAME[rec.to]})`, 'loot'), { type: 'loot', rarity: rec.to });
+    }
+
+    case 'BUY_TALENT': {
+      const t = TALENTS.find(x => x.id === action.id);
+      if (!t || t.cls !== state.heroClass) return state;
+      if ((state.talents[t.id] ?? 0) >= TALENT_MAX || talentPoints(state.hero.level) - spentTalents(state.talents) <= 0) return state;
+      const s = { ...fresh, talents: { ...state.talents, [t.id]: (state.talents[t.id] ?? 0) + 1 } };
+      return emit(withLog(s, `${t.emoji} Талант «${t.name}» → ур. ${s.talents[t.id]}`, 'ability'), { type: 'ui', kind: 'buy' });
+    }
+
+    case 'SET_PET': {
+      if (action.id !== null && state.meta.pets[action.id] <= 0) return state;
+      const s = { ...fresh, meta: { ...state.meta, activePet: action.id } };
+      return action.id ? emit(withLog(s, `${petDef(action.id).emoji} ${petDef(action.id).name} теперь с тобой`), { type: 'ui', kind: 'equip' }) : s;
     }
 
     case 'ENHANCE': {

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { GameEvent, HeroStats } from '../types';
 import type { GameState } from '../game/reducer';
-import { RARITY_COLORS, biomeForFloor } from '../gameData';
+import { RARITY_COLORS, biomeForFloor, petDef } from '../gameData';
 import { useGfx } from '../game/perf';
 import ParticleLayer, { type ParticleHandle } from './ParticleLayer';
 import HeroSprite from './HeroSprite';
@@ -42,6 +42,7 @@ function Torch({ side }: { side: 'left' | 'right' }) {
 }
 
 export default function BattleScene({ state, stats }: Props) {
+  const pet = state.meta.activePet && state.meta.pets[state.meta.activePet] > 0 ? petDef(state.meta.activePet).emoji : null;
   const { hero, monster, monsterHp, monsterAi, heroStatus, equipped, isDead, events, showFloorBanner } = state;
   const biome = biomeForFloor(hero.floor);
   const { low } = useGfx();
@@ -258,6 +259,7 @@ export default function BattleScene({ state, stats }: Props) {
               <HeroSprite equipped={equipped} swingKey={swing.key} heavy={swing.heavy} dead={isDead} />
             </div>
           </div>
+          {pet && <div className="pet-buddy">{pet}</div>}
           <div className="actor-shadow" />
         </div>
 

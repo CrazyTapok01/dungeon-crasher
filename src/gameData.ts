@@ -1,5 +1,5 @@
 import type {
-  AbilityDef, AbilityId, ClassDef, ClassId, Cooldowns, Element, Equipment, HeroState, Item, Meta, Monster, MonsterTrait,
+  AbilityDef, AbilityId, BonusKey, PetDef, PetId, TalentDef, ClassDef, ClassId, Cooldowns, Element, Equipment, HeroState, Item, Meta, Monster, MonsterTrait,
   Quest, QuestKind, Rarity, RelicDef, RelicId, ShopUpgrade, SkillDef, SkillId, SkillLevels,
   UpgradeCounts, UpgradeKind,
 } from './types';
@@ -527,6 +527,7 @@ export function emptyMeta(): Meta {
     legendaries: 0, goldEarned: 0, abilitiesUsed: 0, achievements: [],
     kills: 0, relics: emptyRelics(), quests: [], questsDone: 0,
     daily: { last: '', streak: 0 }, goblins: 0,
+    pets: emptyPets(), activePet: null, egg: -1,
   };
 }
 
@@ -728,3 +729,58 @@ export function craftItem(a: Item, b: Item, to: Rarity): Item {
     price: Math.round((a.price + b.price) * 0.75 * k),
   };
 }
+
+
+// ───────────────────────── таланты классов ─────────────────────────
+// Очки: 1 за каждые 2 уровня героя. По 4 таланта на класс, до 5 уровней — всё не взять, приходится выбирать.
+
+export const TALENT_MAX = 5;
+export const talentPoints = (heroLevel: number): number => Math.floor(heroLevel / 2);
+
+export const TALENTS: TalentDef[] = [
+  { id: 'w_hp',    cls: 'warrior', name: 'Несокрушимость', emoji: '❤️', desc: '+5% к здоровью',        max: TALENT_MAX, per: { hp: 5 } },
+  { id: 'w_def',   cls: 'warrior', name: 'Стальная кожа',  emoji: '🛡️', desc: '+4% к защите',          max: TALENT_MAX, per: { def: 4 } },
+  { id: 'w_atk',   cls: 'warrior', name: 'Мощь удара',     emoji: '💪', desc: '+3% к атаке',            max: TALENT_MAX, per: { atk: 3 } },
+  { id: 'w_regen', cls: 'warrior', name: 'Второе дыхание', emoji: '🌬️', desc: '+2 HP за ход',           max: TALENT_MAX, per: { regen: 2 } },
+  { id: 'm_atk',   cls: 'mage',    name: 'Арканная мощь',  emoji: '🔮', desc: '+4% к атаке',            max: TALENT_MAX, per: { atk: 4 } },
+  { id: 'm_crit',  cls: 'mage',    name: 'Фокус',          emoji: '🎯', desc: '+1.5% к шансу крита',    max: TALENT_MAX, per: { crit: 1.5 } },
+  { id: 'm_cdmg',  cls: 'mage',    name: 'Разрушение',     emoji: '💥', desc: '+8% к крит. урону',      max: TALENT_MAX, per: { critdmg: 8 } },
+  { id: 'm_pierce',cls: 'mage',    name: 'Пронзание',      emoji: '🌀', desc: '+5% игнора брони',       max: TALENT_MAX, per: { pierce: 5 } },
+  { id: 't_speed', cls: 'thief',   name: 'Проворство',     emoji: '⚡', desc: '+3% шанс второго удара', max: TALENT_MAX, per: { speed: 3 } },
+  { id: 't_dodge', cls: 'thief',   name: 'Тень',           emoji: '👤', desc: '+2% к уклонению',        max: TALENT_MAX, per: { dodge: 2 } },
+  { id: 't_crit',  cls: 'thief',   name: 'Меткость',       emoji: '🗡️', desc: '+1.5% к шансу крита',    max: TALENT_MAX, per: { crit: 1.5 } },
+  { id: 't_gold',  cls: 'thief',   name: 'Ограбление',     emoji: '💰', desc: '+6% к золоту',           max: TALENT_MAX, per: { gold: 6 } },
+];
+
+export function bonusFrom(levels: Record<string, number>, defs: { id: string; per: PetDef['per'] }[], key: BonusKey): number {
+  return defs.reduce((sum, d) => sum + (levels[d.id] ?? 0) * (d.per[key] ?? 0), 0);
+}
+
+export const talentBonus = (talents: Record<string, number>, key: BonusKey) => bonusFrom(talents, TALENTS, key);
+
+export const spentTalents = (talents: Record<string, number>): number =>
+  Object.values(talents).reduce((a, b) => a + b, 0);
+
+// ───────────────────────── питомцы ─────────────────────────
+// С босса падает яйцо (шанс EGG.chance, если оно ещё не греется). Через EGG.kills убийств вылупляется питомец:
+// новый вид или +1 уровень уже имеющемуся. Помогает один активный питомец.
+
+export const PET_MAX = 10;
+export const EGG = { chance: 0.3, kills: 60 };
+
+export const PETS: PetDef[] = [
+  { id: 'wolf',   name: 'Волчонок',  emoji: '🐺', desc: '+2% к атаке',                      per: { atk: 2 } },
+  { id: 'hawk',   name: 'Ястреб',    emoji: '🦅', desc: '+0.8% крита, +3% крит. урона',     per: { crit: 0.8, critdmg: 3 } },
+  { id: 'turtle', name: 'Черепаха',  emoji: '🐢', desc: '+3% к здоровью, +1% к защите',     per: { hp: 3, def: 1 } },
+  { id: 'fox',    name: 'Лисёнок',   emoji: '🦊', desc: '+3% к золоту, +2% к опыту',        per: { gold: 3, xp: 2 } },
+  { id: 'drake',  name: 'Дракончик', emoji: '🐲', desc: '+1.5% к атаке и здоровью',         per: { atk: 1.5, hp: 1.5 } },
+];
+
+export function emptyPets(): Record<PetId, number> {
+  return { wolf: 0, hawk: 0, turtle: 0, fox: 0, drake: 0 };
+}
+
+export const petDef = (id: PetId): PetDef => PETS.find(p => p.id === id)!;
+
+export const petBonus = (pet: { id: PetId; level: number } | null, key: BonusKey): number =>
+  pet ? (petDef(pet.id).per[key] ?? 0) * pet.level : 0;

@@ -393,3 +393,8 @@
     animation: none !important;
   }
 }
+
+/* питомец рядом с героем */
+.pet-buddy { position: absolute; left: 74%; bottom: -1.5cqw; font-size: 9cqw; line-height: 1; z-index: 12; animation: pet-hop 1.4s steps(6) infinite; }
+@keyframes pet-hop { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-1.6cqw); } }
+.lowfx .pet-buddy { animation: none; }

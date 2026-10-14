@@ -1,6 +1,7 @@
-import type { Equipment, Item, ItemSlot } from '../types';
+import type { ClassId, Equipment, Item, ItemSlot } from '../types';
 import { RARITY_ORDER, itemScore, junkItems } from '../gameData';
 import ItemCard from './ItemCard';
+import PaperDoll from './PaperDoll';
 
 interface Props {
   inventory: Item[];
@@ -12,6 +13,7 @@ interface Props {
   onSellJunk: () => void;
   gold: number;
   onEnhance: (slot: ItemSlot) => void;
+  heroClass: ClassId | null;
 }
 
 const SLOTS: { key: ItemSlot; label: string; emoji: string }[] = [
@@ -20,7 +22,7 @@ const SLOTS: { key: ItemSlot; label: string; emoji: string }[] = [
   { key: 'amulet', label: 'Амулет', emoji: '📿' },
 ];
 
-export default function InventoryPanel({ inventory, limit, equipped, onEquip, onSell, onEquipBest, onSellJunk, gold, onEnhance }: Props) {
+export default function InventoryPanel({ inventory, limit, equipped, onEquip, onSell, onEquipBest, onSellJunk, gold, onEnhance, heroClass }: Props) {
   // лучшие и редкие — сверху
   const sorted = [...inventory].sort((a, b) =>
     RARITY_ORDER.indexOf(b.rarity) - RARITY_ORDER.indexOf(a.rarity) || itemScore(b) - itemScore(a));
@@ -33,20 +35,7 @@ export default function InventoryPanel({ inventory, limit, equipped, onEquip, on
     <div className="panel rounded-xl p-3">
       <h2 className="text-xl font-black text-amber-300 mb-3 text-center text-stroke">🎒 Инвентарь и экипировка</h2>
 
-      <h3 className="text-sm font-bold text-purple-300 mb-1.5">Надето</h3>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
-        {SLOTS.map(slot => {
-          const item = equipped[slot.key];
-          return (
-            <div key={slot.key}>
-              <div className="text-[11px] text-purple-300 mb-1">{slot.emoji} {slot.label}</div>
-              {item ? <ItemCard item={item} equipped gold={gold} onEnhance={() => onEnhance(slot.key)} /> : (
-                <div className="rounded-lg bg-black/30 border border-dashed border-purple-800/60 text-purple-400/60 text-center text-sm h-[72px] flex items-center justify-center italic">Пусто</div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+      <PaperDoll equipped={equipped} gold={gold} heroClass={heroClass} onEnhance={onEnhance} />
 
       <div className="flex items-center justify-between gap-2 mb-2">
         <h3 className="text-sm font-bold text-purple-300">В сумке ({inventory.length}/{limit})</h3>

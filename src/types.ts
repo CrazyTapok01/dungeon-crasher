@@ -163,6 +163,34 @@ export interface Meta {
   questsDone: number;     // сколько заданий выполнено (растёт сложность)
   daily: { last: string; streak: number }; // ежедневная награда
   goblins: number;        // побеждено гоблинов-казначеев
+  pets: Record<PetId, number>; // уровни питомцев (0 — ещё нет)
+  activePet: PetId | null;     // питомец, который сейчас помогает
+  egg: number;                 // убийств в инкубации яйца (-1 — яйца нет)
+}
+
+/** Питомцы: падают яйцами с боссов, помогают пассивными бонусами. */
+export type PetId = 'wolf' | 'hawk' | 'turtle' | 'fox' | 'drake';
+
+/** Бонус «за уровень»: atk/hp/def/gold/xp — в процентах, crit — в пунктах шанса. */
+export type BonusKey = 'atk' | 'hp' | 'def' | 'gold' | 'xp' | 'crit' | 'critdmg' | 'dodge' | 'regen' | 'pierce' | 'speed';
+
+export interface PetDef {
+  id: PetId;
+  name: string;
+  emoji: string;
+  desc: string;
+  per: Partial<Record<BonusKey, number>>;
+}
+
+/** Таланты класса: очки даёт уровень героя, сбрасываются при перерождении. */
+export interface TalentDef {
+  id: string;
+  cls: ClassId;
+  name: string;
+  emoji: string;
+  desc: string; // что даёт один уровень
+  max: number;
+  per: Partial<Record<BonusKey, number>>;
 }
 
 /** Реликвии: редкая добыча с боссов, постоянные бонусы. */
