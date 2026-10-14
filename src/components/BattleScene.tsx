@@ -298,7 +298,7 @@ export default function BattleScene({ state, stats }: Props) {
 
         {/* ── плашки здоровья ── */}
         <div className="hud-row">
-          <HeroPanel hero={hero} stats={stats} status={heroStatus} />
+          <HeroPanel hero={hero} stats={stats} status={heroStatus} heroClass={state.heroClass} />
           <MonsterPanel monster={monster} hp={monsterHp} ai={monsterAi} />
         </div>
 

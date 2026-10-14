@@ -1,6 +1,6 @@
 import type {
-  AbilityId, Cooldowns, Equipment, GameEvent, GameEventBody, HeroState, HeroStats, HeroStatus,
-  Item, ItemSlot, LogEntry, LogType, Meta, Monster, MonsterAi, OfflineReport, Settings,
+  AbilityId, ClassId, Cooldowns, Element, Equipment, GameEvent, GameEventBody, HeroState, HeroStats, HeroStatus,
+  Item, ItemSlot, LogEntry, Rarity, LogType, Meta, Monster, MonsterAi, OfflineReport, Settings,
   SkillId, SkillLevels, UpgradeCounts, UpgradeKind,
 } from '../types';
 import {
@@ -9,7 +9,7 @@ import {
   SHIELD, SHOP_POTION, SHOP_UPGRADES, SKILLS, STAGES_PER_FLOOR, STRIKE, SWIFT_DODGE, THORNS_FRAC,
   TRAITS, abilityDef, abilityUnlocked, baseMonsterStats, biomeForFloor, chestCost, chestMinRarity,
   deathGoldKept, emptyCooldowns, emptyMeta, emptySkillLevels, emptyUpgradeCounts, generateItem,
-  generateMonster, ENHANCE, dailyPreview, enhanceCost, sellPrice, todayKey, inventoryLimit, RELICS, RELIC_DROP, RELIC_MAX, QUEST_INFO, fillQuests, questProgress, itemScore, junkItems, skillCost, skillMaxLevel, skillUnlocked,
+  generateMonster, CLASSES, CLASS_BONUS, CRAFT_RECIPES, counterOf, craftItem, craftGroups, ENHANCE, dailyPreview, enhanceCost, sellPrice, todayKey, inventoryLimit, RELICS, RELIC_DROP, RELIC_MAX, QUEST_INFO, fillQuests, questProgress, itemScore, junkItems, skillCost, skillMaxLevel, skillUnlocked,
   soulsForFloor, upgradeAmount, upgradeCost,
 } from '../gameData';
 import { computeStats } from './stats';
@@ -36,6 +36,8 @@ export interface GameState {
   meta: Meta;
   upgradeCounts: UpgradeCounts;
   settings: Settings;
+  heroClass: ClassId | null; // null — класс ещё не выбран
+  heroElement: Element;      // стихия атак героя
 
   // ── текущий бой (не сохраняется) ──
   monster: Monster;
@@ -70,6 +72,10 @@ export type Action =
   | { type: 'SELL_JUNK' }
   | { type: 'ENHANCE'; slot: ItemSlot }
   | { type: 'CLAIM_DAILY' }
+  | { type: 'SET_CLASS'; id: ClassId }
+  | { type: 'SET_ELEMENT'; element: Element }
+  | { type: 'SET_AUTO_ELEMENT'; value: boolean }
+  | { type: 'CRAFT'; slot: ItemSlot; from: Rarity }
   | { type: 'REBIRTH' }
   | { type: 'OFFLINE'; seconds: number }       // игрока не было seconds секунд
   | { type: 'DISMISS_OFFLINE' }
@@ -84,7 +90,7 @@ const newId = () => ++nextId;
 const NO_EVENTS: GameEvent[] = [];
 
 const statsOf = (s: GameState): HeroStats =>
-  computeStats(s.hero, s.skillLevels, s.equipped, s.meta.souls, s.meta.relics);
+  computeStats(s.hero, s.skillLevels, s.equipped, s.meta.souls, s.meta.relics, s.heroClass);
 
 function withLog(s: GameState, text: string, type: LogType = 'info'): GameState {
   return { ...s, log: [{ id: newId(), text, type }, ...s.log].slice(0, LOG_LIMIT) };
@@ -148,6 +154,7 @@ function spawnMonster(s: GameState): GameState {
   const monster = generateMonster(s.hero.floor, s.hero.stage);
   return announceMonster({
     ...s,
+    heroElement: s.settings.autoElement ? counterOf(monster.element) : s.heroElement,
     monster, monsterId: newId(), monsterHp: monster.hp, monsterAi: freshAi(), turn: 'hero',
     heroStatus: { ...s.heroStatus, poisonTurns: 0, poisonDmg: 0 }, // яд проходит после победы
   });
@@ -165,7 +172,9 @@ function createState(save: SaveData | null): GameState {
     inventory: save?.inventory ?? [],
     meta: fillQuests({ ...meta, maxFloor: Math.max(meta.maxFloor, hero.floor) }),
     upgradeCounts: save?.upgradeCounts ?? emptyUpgradeCounts(),
-    settings: save?.settings ?? { autoAbilities: true },
+    settings: save?.settings ?? { autoAbilities: true, autoElement: false },
+    heroClass: save?.heroClass ?? null,
+    heroElement: counterOf(monster.element),
     monster,
     monsterId: newId(),
     monsterHp: monster.hp,
@@ -269,7 +278,7 @@ function castAbility(state: GameState, id: AbilityId): GameState {
 
   switch (id) {
     case 'strike': {
-      const roll = rollHeroAttack(statsOf(s), s.monster, { mult: STRIKE.mult, ignoreDef: STRIKE.ignoreDef });
+      const roll = rollHeroAttack(statsOf(s), s.monster, { mult: STRIKE.mult, ...atkOpts(s, STRIKE.ignoreDef) });
       return hitMonster(withLog(s, `💥 Сокрушающий удар!`, 'ability'), roll, true);
     }
     case 'heal': {
@@ -342,6 +351,12 @@ function hitMonster(
   return s;
 }
 
+/** Общие параметры удара героя: стихия и магия мага (игнор брони). */
+function atkOpts(s: GameState, ignoreDef = 0) {
+  const pierce = s.heroClass === 'mage' ? CLASS_BONUS.magePierce : 0;
+  return { element: s.heroElement, ignoreDef: 1 - (1 - ignoreDef) * (1 - pierce) };
+}
+
 function heroAttack(state: GameState): GameState {
   const stats = statsOf(state);
   const { monster } = state;
@@ -356,7 +371,12 @@ function heroAttack(state: GameState): GameState {
   // «Берсерк» усиливает несколько обычных ударов подряд
   const raging = s.heroStatus.rageCharges > 0;
   if (raging) s = { ...s, heroStatus: { ...s.heroStatus, rageCharges: s.heroStatus.rageCharges - 1 } };
-  return hitMonster(s, rollHeroAttack(stats, monster, raging ? { mult: RAGE.mult } : {}), false);
+  s = hitMonster(s, rollHeroAttack(stats, monster, { ...atkOpts(s), ...(raging ? { mult: RAGE.mult } : {}) }), false);
+  // Вор: шанс ударить ещё раз подряд
+  if (s.heroClass === 'thief' && !s.isDead && s.monsterId === state.monsterId && Math.random() < CLASS_BONUS.thiefSpeed) {
+    s = { ...s, turn: 'hero' };
+  }
+  return s;
 }
 
 function monsterAttack(state: GameState): GameState {
@@ -591,7 +611,7 @@ function reduce(state: GameState, action: Action): GameState {
 
   switch (action.type) {
     case 'TICK': {
-      if (state.isDead) return state;
+      if (state.isDead || state.heroClass === null) return state;
       let s: GameState = {
         ...fresh,
         cooldowns: {
@@ -655,6 +675,32 @@ function reduce(state: GameState, action: Action): GameState {
       let s = withGold(fresh, -cost);
       s = dropItem(s, item);
       return { ...s, chestResult: item };
+    }
+
+    case 'SET_CLASS': {
+      if (state.heroClass !== null) return state;
+      const s = { ...fresh, heroClass: action.id };
+      const hp = statsOf(s).maxHp;
+      return emit(withLog({ ...s, hero: { ...s.hero, hp } }, `🎭 Выбран класс: ${CLASSES.find(c => c.id === action.id)!.name}`, 'boss'), { type: 'ui', kind: 'equip' });
+    }
+
+    case 'SET_ELEMENT':
+      return { ...fresh, heroElement: action.element, settings: { ...state.settings, autoElement: false } };
+
+    case 'SET_AUTO_ELEMENT': {
+      const settings = { ...state.settings, autoElement: action.value };
+      return { ...fresh, settings, heroElement: action.value ? counterOf(state.monster.element) : state.heroElement };
+    }
+
+    case 'CRAFT': {
+      const rec = CRAFT_RECIPES.find(r => r.from === action.from);
+      const group = craftGroups(state.inventory).find(g => g.slot === action.slot && g.from === action.from);
+      if (!rec || !group || group.pair.length < 2) return state;
+      const [a, b] = group.pair;
+      const result = craftItem(a, b, rec.to);
+      const ids = new Set([a.id, b.id]);
+      const s = { ...fresh, inventory: [result, ...state.inventory.filter(i => !ids.has(i.id))] };
+      return emit(withLog(s, `🔨 Создано: ${result.name} (${RARITY_NAME[rec.to]})`, 'loot'), { type: 'loot', rarity: rec.to });
     }
 
     case 'ENHANCE': {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import type { AbilityId, Item, ItemSlot, Skill, SkillId, UpgradeKind } from '../types';
+import type { AbilityId, ClassId, Element, Item, ItemSlot, Rarity, Skill, SkillId, UpgradeKind } from '../types';
 import { BANNER_DURATION_MS, COMBAT_TICK_MS, RESPAWN_DELAY_MS, SKILLS, skillMaxLevel, skillUnlocked } from '../gameData';
 import { computeStats } from '../game/stats';
 import { gameReducer, loadInitialState } from '../game/reducer';
@@ -17,8 +17,8 @@ export function useGame() {
   const [autoFight, setAutoFight] = useState(true);
 
   const stats = useMemo(
-    () => computeStats(state.hero, state.skillLevels, state.equipped, state.meta.souls, state.meta.relics),
-    [state.hero, state.skillLevels, state.equipped, state.meta.souls, state.meta.relics],
+    () => computeStats(state.hero, state.skillLevels, state.equipped, state.meta.souls, state.meta.relics, state.heroClass),
+    [state.hero, state.skillLevels, state.equipped, state.meta.souls, state.meta.relics, state.heroClass],
   );
 
   const skills = useMemo<Skill[]>(
@@ -71,7 +71,7 @@ export function useGame() {
       const st = latest.current;
       saveGame({
         hero: st.hero, skillLevels: st.skillLevels, equipped: st.equipped, inventory: st.inventory,
-        meta: st.meta, upgradeCounts: st.upgradeCounts, settings: st.settings,
+        meta: st.meta, upgradeCounts: st.upgradeCounts, settings: st.settings, heroClass: st.heroClass,
       });
     };
     if (saveTimer.current === null) saveTimer.current = window.setTimeout(flush, 5000);
@@ -83,7 +83,7 @@ export function useGame() {
       document.removeEventListener('visibilitychange', onHide);
       window.removeEventListener('pagehide', flush);
     };
-  }, [state.hero, state.skillLevels, state.equipped, state.inventory, state.meta, state.upgradeCounts, state.settings]);
+  }, [state.hero, state.skillLevels, state.equipped, state.inventory, state.meta, state.upgradeCounts, state.settings, state.heroClass]);
 
   // Свернул игру на телефоне и вернулся — выдаём награду за отсутствие
   useEffect(() => {
@@ -112,6 +112,10 @@ export function useGame() {
     equipBest: () => dispatch({ type: 'EQUIP_BEST' }),
     sellJunk: () => dispatch({ type: 'SELL_JUNK' }),
     enhance: (slot: ItemSlot) => dispatch({ type: 'ENHANCE', slot }),
+    setClass: (id: ClassId) => dispatch({ type: 'SET_CLASS', id }),
+    setElement: (element: Element) => dispatch({ type: 'SET_ELEMENT', element }),
+    setAutoElement: (value: boolean) => dispatch({ type: 'SET_AUTO_ELEMENT', value }),
+    craft: (slot: ItemSlot, from: Rarity) => dispatch({ type: 'CRAFT', slot, from }),
     claimDaily: () => dispatch({ type: 'CLAIM_DAILY' }),
     useAbility: (id: AbilityId) => dispatch({ type: 'USE_ABILITY', id }),
     setAutoAbilities: (value: boolean) => dispatch({ type: 'SET_AUTO_ABILITIES', value }),

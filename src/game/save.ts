@@ -1,5 +1,5 @@
 import type {
-  Equipment, HeroState, Item, ItemSlot, Meta, QuestKind, Settings, SkillLevels, UpgradeCounts,
+  ClassId, Equipment, HeroState, Item, ItemSlot, Meta, QuestKind, Settings, SkillLevels, UpgradeCounts,
 } from '../types';
 import {
   ACHIEVEMENTS, INITIAL_HERO, MAX_PERK_LEVELS, QUEST_INFO, RARITY_NAME, RELICS, RELIC_MAX, SKILLS,
@@ -20,6 +20,7 @@ export interface SaveData {
   meta: Meta;
   upgradeCounts: UpgradeCounts;
   settings: Settings;
+  heroClass?: ClassId | null;
   lastSeen?: number; // когда игру закрыли (мс) — для офлайн-награды
 }
 
@@ -133,7 +134,8 @@ function fromRecord(d: Record<string, unknown>): SaveData {
     inventory: Array.isArray(d.inventory) ? d.inventory.filter(isItem) : [],
     meta: sanitizeMeta(d.meta, hero),
     upgradeCounts: sanitizeCounts(d.upgradeCounts),
-    settings: { autoAbilities: settings.autoAbilities !== false }, // по умолчанию включено
+    settings: { autoAbilities: settings.autoAbilities !== false, autoElement: settings.autoElement === true },
+    heroClass: d.heroClass === 'warrior' || d.heroClass === 'mage' || d.heroClass === 'thief' ? d.heroClass : null,
     lastSeen: typeof d.lastSeen === 'number' ? d.lastSeen : undefined,
   };
 }

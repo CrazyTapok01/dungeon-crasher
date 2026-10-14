@@ -12,13 +12,17 @@ import MorePanel from './components/MorePanel';
 import ConfirmModal from './components/ConfirmModal';
 import OfflineModal from './components/OfflineModal';
 import SplashScreen from './components/SplashScreen';
+import ClassSelect from './components/ClassSelect';
+import ElementBar from './components/ElementBar';
+import CraftPanel from './components/CraftPanel';
 
-type Tab = 'combat' | 'hero' | 'inventory' | 'shop' | 'more';
+type Tab = 'combat' | 'hero' | 'inventory' | 'craft' | 'shop' | 'more';
 
 const TABS: { id: Tab; icon: string; label: string }[] = [
   { id: 'combat',    icon: '⚔️', label: 'Бой' },
   { id: 'hero',      icon: '✨', label: 'Герой' },
   { id: 'inventory', icon: '🎒', label: 'Сумка' },
+  { id: 'craft',     icon: '🔨', label: 'Крафт' },
   { id: 'shop',      icon: '🏪', label: 'Лавка' },
   { id: 'more',      icon: '👻', label: 'Ещё' },
 ];
@@ -116,6 +120,10 @@ export default function App() {
               onUse={game.useAbility}
               onToggleAuto={() => game.setAutoAbilities(!state.settings.autoAbilities)}
             />
+            <ElementBar
+              monster={state.monster} current={state.heroElement} auto={state.settings.autoElement}
+              onPick={game.setElement} onToggleAuto={() => game.setAutoElement(!state.settings.autoElement)}
+            />
             <CombatLog log={state.log} />
           </div>
         )}
@@ -128,6 +136,9 @@ export default function App() {
             onEquip={game.equipItem} onSell={game.sellItem}
             onEquipBest={game.equipBest} onSellJunk={game.sellJunk} gold={hero.gold} onEnhance={game.enhance}
           />
+        )}
+        {tab === 'craft' && (
+          <CraftPanel inventory={state.inventory} limit={inventoryLimit(state.meta.rebirths)} onCraft={game.craft} />
         )}
         {tab === 'shop' && (
           <ShopPanel
@@ -146,7 +157,9 @@ export default function App() {
       </main>
 
       {/* ── нижняя навигация ── */}
-      <nav className="shrink-0 grid grid-cols-5 gap-1 px-2 pt-1.5 border-t border-purple-900/60 bg-black/80"
+      {started && state.heroClass === null && <ClassSelect rebirths={state.meta.rebirths} onPick={game.setClass} />}
+
+      <nav className="shrink-0 grid grid-cols-6 gap-1 px-2 pt-1.5 border-t border-purple-900/60 bg-black/80"
            style={{ paddingBottom: 'max(var(--sab), 6px)' }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => go(t.id)}

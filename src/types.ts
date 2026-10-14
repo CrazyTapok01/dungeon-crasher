@@ -25,6 +25,20 @@ export interface Item {
 export type Equipment = Partial<Record<ItemSlot, Item>>;
 
 /** Особенности монстров: делают бои разнообразнее. */
+/** Стихии: Огонь > Лёд > Природа > Огонь. */
+export type Element = 'fire' | 'ice' | 'nature';
+
+/** Классы героя: выбираются при первом запуске и после каждого перерождения. */
+export type ClassId = 'warrior' | 'mage' | 'thief';
+
+export interface ClassDef {
+  id: ClassId;
+  name: string;
+  emoji: string;
+  desc: string;
+  perks: string[];
+}
+
 export type MonsterTrait = 'poison' | 'armored' | 'regen' | 'enrage' | 'thorns' | 'swift';
 
 export interface Monster {
@@ -39,6 +53,7 @@ export interface Monster {
   isElite: boolean;
   tier: number;
   trait?: MonsterTrait;
+  element: Element;  // стихия врага: у каждой есть слабость
   goblin?: boolean; // гоблин-казначей: мало HP, много золота
 }
 
@@ -174,6 +189,7 @@ export interface Quest {
 
 export interface Settings {
   autoAbilities: boolean; // способности применяются сами
+  autoElement: boolean;   // герой сам выбирает выигрышную стихию
 }
 
 export type UpgradeKind = 'atk' | 'def' | 'hp';

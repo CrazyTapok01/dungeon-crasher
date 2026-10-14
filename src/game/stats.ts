@@ -1,5 +1,5 @@
-import type { Equipment, HeroState, HeroStats, RelicId, SkillLevels } from '../types';
-import { BASE_STATS, enhanced, PRESTIGE, SKILL_BONUS, STAT_CAPS, soulMultiplier } from '../gameData';
+import type { Equipment, HeroState, HeroStats, ClassId, RelicId, SkillLevels } from '../types';
+import { BASE_STATS, CLASS_BONUS, enhanced, PRESTIGE, SKILL_BONUS, STAT_CAPS, soulMultiplier } from '../gameData';
 
 /**
  * Итоговые параметры героя = (база + предметы + навыки) × бонус душ.
@@ -8,6 +8,7 @@ import { BASE_STATS, enhanced, PRESTIGE, SKILL_BONUS, STAT_CAPS, soulMultiplier 
 export function computeStats(
   hero: HeroState, levels: SkillLevels, equipped: Equipment, souls = 0,
   relics: Partial<Record<RelicId, number>> = {},
+  cls: ClassId | null = null,
 ): HeroStats {
   const rl = (id: RelicId) => relics[id] ?? 0;
   const { weapon, armor, amulet } = {
@@ -25,11 +26,12 @@ export function computeStats(
 
   return {
     atk: Math.round(atk * mult * (1 + (levels.fury * SKILL_BONUS.fury) / 100) * (1 + rl('fang') * 0.03)),
-    def: hero.baseDef + (armor?.def ?? 0) + (amulet?.def ?? 0) + levels.armor * SKILL_BONUS.armor + rl('scale') * 2,
-    maxHp: Math.round(maxHp * mult * (1 + rl('heart') * 0.04)),
+    def: Math.round((hero.baseDef + (armor?.def ?? 0) + (amulet?.def ?? 0) + levels.armor * SKILL_BONUS.armor + rl('scale') * 2)
+      * (cls === 'warrior' ? CLASS_BONUS.warriorDef : cls === 'thief' ? CLASS_BONUS.thiefDef : 1)),
+    maxHp: Math.round(maxHp * mult * (1 + rl('heart') * 0.04) * (cls === 'warrior' ? CLASS_BONUS.warriorHp : cls === 'mage' ? CLASS_BONUS.mageHp : 1)),
     critChance: Math.min(STAT_CAPS.critChance, BASE_STATS.critChance + levels.crit * SKILL_BONUS.crit + sum('crit') + rl('eye')),
-    critDmg: BASE_STATS.critDmg + levels.critdmg * SKILL_BONUS.critdmg + sum('critdmg'),
-    dodge: Math.min(STAT_CAPS.dodge, BASE_STATS.dodge + levels.dodge * SKILL_BONUS.dodge + sum('dodge') + rl('wind') * 0.5),
+    critDmg: BASE_STATS.critDmg + levels.critdmg * SKILL_BONUS.critdmg + sum('critdmg') + (cls === 'mage' ? CLASS_BONUS.mageCritDmg : 0),
+    dodge: Math.min(STAT_CAPS.dodge, BASE_STATS.dodge + levels.dodge * SKILL_BONUS.dodge + sum('dodge') + rl('wind') * 0.5 + (cls === 'thief' ? CLASS_BONUS.thiefDodge : 0)),
     lifesteal: BASE_STATS.lifesteal + levels.vamp * SKILL_BONUS.vamp + sum('vamp') + rl('blood') * 0.4,
     regen: levels.regen * SKILL_BONUS.regen,
     goldBonus: levels.fortune * SKILL_BONUS.fortune + Math.round(souls * PRESTIGE.goldPerSoul * 100) + rl('coin') * 4,

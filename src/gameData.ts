@@ -1,5 +1,5 @@
 import type {
-  AbilityDef, AbilityId, Cooldowns, Equipment, HeroState, Item, Meta, Monster, MonsterTrait,
+  AbilityDef, AbilityId, ClassDef, ClassId, Cooldowns, Element, Equipment, HeroState, Item, Meta, Monster, MonsterTrait,
   Quest, QuestKind, Rarity, RelicDef, RelicId, ShopUpgrade, SkillDef, SkillId, SkillLevels,
   UpgradeCounts, UpgradeKind,
 } from './types';
@@ -348,7 +348,7 @@ export function generateMonster(floor: number, stage: number): Monster {
     return {
       name: 'Гоблин-казначей', emoji: '👺', hp: Math.round(b.hp * GOBLIN.hp), atk: Math.round(b.atk * GOBLIN.atk),
       def: b.def, gold: Math.round(b.gold * GOBLIN.gold), xp: Math.round(b.xp * GOBLIN.xp),
-      isBoss: false, isElite: false, tier, goblin: true,
+      isBoss: false, isElite: false, tier, goblin: true, element: pick(ELEMENT_LIST),
     };
   }
   const e = isElite ? ELITE : { hp: 1, atk: 1, def: 1, gold: 1, xp: 1 };
@@ -362,7 +362,7 @@ export function generateMonster(floor: number, stage: number): Monster {
     def:  Math.round(b.def * e.def * armored),
     gold: Math.round(b.gold * e.gold),
     xp:   Math.round(b.xp * e.xp),
-    isBoss, isElite, tier, trait,
+    isBoss, isElite, tier, trait, element: pick(ELEMENT_LIST),
   };
 }
 
@@ -648,4 +648,83 @@ export function dailyPreview(meta: Meta, today = todayKey()): { available: boole
   const streak = last === today ? meta.daily.streak : continues ? meta.daily.streak + 1 : 1;
   const gold = Math.round(DAILY.goldPerFloor * meta.maxFloor * (1 + (Math.min(streak, DAILY.streakCap) - 1) * 0.25));
   return { available: last !== today, streak, gold, souls: streak % DAILY.soulsEvery === 0 ? DAILY.soulsBonus : 0 };
+}
+
+
+// ───────────────────────── классы ─────────────────────────
+
+export const CLASSES: ClassDef[] = [
+  { id: 'warrior', name: 'Воин', emoji: '🛡️', desc: 'Крепкий боец, который держит удар.',
+    perks: ['+30% к здоровью', '+20% к защите', 'Обычный шанс крита'] },
+  { id: 'mage', name: 'Маг', emoji: '🔮', desc: 'Стеклянная пушка с магическими атаками.',
+    perks: ['+40% к крит. урону', 'Магические атаки: игнорируют 30% брони врага', '-10% к здоровью'] },
+  { id: 'thief', name: 'Вор', emoji: '🗡️', desc: 'Быстрый и неуловимый, но хрупкий.',
+    perks: ['+25% скорость атаки (шанс ударить дважды)', '+30% к уклонению', '-15% к защите'] },
+];
+
+export const CLASS_BONUS = {
+  warriorHp: 1.3, warriorDef: 1.2,
+  mageCritDmg: 40, mageHp: 0.9, magePierce: 0.3,
+  thiefSpeed: 0.25, thiefDodge: 30, thiefDef: 0.85,
+};
+
+export const classDef = (id: ClassId): ClassDef => CLASSES.find(c => c.id === id)!;
+
+// ───────────────────────── стихии ─────────────────────────
+
+export const ELEMENT_LIST: Element[] = ['fire', 'ice', 'nature'];
+
+export const ELEMENTS: Record<Element, { name: string; emoji: string; color: string }> = {
+  fire:   { name: 'Огонь',   emoji: '🔥', color: 'text-orange-300' },
+  ice:    { name: 'Лёд',     emoji: '❄️', color: 'text-cyan-300' },
+  nature: { name: 'Природа', emoji: '🌿', color: 'text-green-300' },
+};
+
+export const ELEMENT_RULE = { strong: 1.5, weak: 0.75 };
+
+/** Огонь > Лёд > Природа > Огонь. */
+export const beats = (a: Element, b: Element): boolean =>
+  (a === 'fire' && b === 'ice') || (a === 'ice' && b === 'nature') || (a === 'nature' && b === 'fire');
+
+/** Множитель урона героя нужной стихии по врагу. */
+export const elementMult = (hero: Element, enemy: Element): number =>
+  beats(hero, enemy) ? ELEMENT_RULE.strong : beats(enemy, hero) ? ELEMENT_RULE.weak : 1;
+
+/** Какая стихия бьёт данного врага. */
+export const counterOf = (enemy: Element): Element => ELEMENT_LIST.find(e => beats(e, enemy))!;
+
+// ───────────────────────── крафт ─────────────────────────
+// 2 вещи одного слота и одного качества → 1 вещь следующего качества.
+
+export const CRAFT_RECIPES: { from: Rarity; to: Rarity }[] = [
+  { from: 'common', to: 'uncommon' },
+  { from: 'uncommon', to: 'rare' },
+];
+
+const rollBonus = (r: Rarity) => RARITY_ROLL.find(x => x.rarity === r)!.bonus;
+
+/** Материалы для крафта: вещи без заточки, сгруппированные по слоту и качеству; в паре — две самые слабые. */
+export function craftGroups(inventory: Item[]) {
+  return CRAFT_RECIPES.flatMap(rec =>
+    (['weapon', 'armor', 'amulet'] as const).map(slot => {
+      const items = inventory.filter(i => i.slot === slot && i.rarity === rec.from && !i.plus)
+        .sort((a, b) => itemScore(a) - itemScore(b));
+      return { ...rec, slot, count: items.length, pair: items.slice(0, 2) };
+    }));
+}
+
+/** Результат крафта: средние статьи двух вещей, усиленные качеством, плюс новые бонусы. */
+export function craftItem(a: Item, b: Item, to: Rarity): Item {
+  const k = rollBonus(to) / rollBonus(a.rarity);
+  const avg = (x?: number, y?: number) => (x === undefined && y === undefined ? undefined : Math.max(1, Math.round((((x ?? 0) + (y ?? 0)) / 2) * k)));
+  const base = a.name.replace(/\s*\+\d+$/, '');
+  const lvl = Math.max(...[a, b].map(i => Number(/\+(\d+)$/.exec(i.name)?.[1] ?? 0))) + 1;
+  return {
+    id: `item_${++idCounter}_${Date.now()}`,
+    slot: a.slot, rarity: to, emoji: a.emoji,
+    name: a.slot === 'amulet' ? base : `${base} +${lvl}`,
+    atk: avg(a.atk, b.atk), def: avg(a.def, b.def), hp: avg(a.hp, b.hp),
+    ...rollAffixes(to, a.slot),
+    price: Math.round((a.price + b.price) * 0.75 * k),
+  };
 }

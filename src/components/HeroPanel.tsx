@@ -1,19 +1,21 @@
 import { memo } from 'react';
-import type { HeroState, HeroStats, HeroStatus } from '../types';
+import type { ClassId, HeroState, HeroStats, HeroStatus } from '../types';
+import { classDef } from '../gameData';
 import StatBar from './StatBar';
 
 interface Props {
   hero: HeroState;
   stats: HeroStats;
   status: HeroStatus;
+  heroClass: ClassId | null;
 }
 
 /** Плашка героя над сценой: уровень, здоровье, эффекты (яд, щит). */
-function HeroPanel({ hero, stats, status }: Props) {
+function HeroPanel({ hero, stats, status, heroClass }: Props) {
   return (
     <div className="hud">
       <div className="hud-title">
-        <span className="hud-name">🛡️ Крушитель</span>
+        <span className="hud-name">{heroClass ? classDef(heroClass).emoji : '🛡️'} Крушитель{heroClass && <span className="text-amber-300 text-xs font-bold"> · {classDef(heroClass).name}</span>}</span>
         <span className="hud-lvl">Ур. {hero.level}</span>
       </div>
       <StatBar

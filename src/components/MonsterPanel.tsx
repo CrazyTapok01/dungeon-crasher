@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import type { Monster, MonsterAi } from '../types';
-import { TRAITS } from '../gameData';
+import { ELEMENTS, TRAITS } from '../gameData';
 import StatBar from './StatBar';
 
 interface Props {
@@ -23,6 +23,7 @@ function MonsterPanel({ monster, hp, ai }: Props) {
       <div className="hud-title">
         <span className={`hud-name ${monster.isBoss ? 'text-amber-300' : monster.isElite ? 'text-purple-300' : ''}`}>
           {monster.isBoss ? '👑 ' : monster.isElite ? '⭐ ' : ''}{monster.name}
+          <span className={`ml-1 ${ELEMENTS[monster.element].color}`} title={ELEMENTS[monster.element].name}>{ELEMENTS[monster.element].emoji}</span>
         </span>
       </div>
       <StatBar value={hp} max={monster.hp} height={15} fill={fill} label={`${hp} / ${monster.hp}`} />

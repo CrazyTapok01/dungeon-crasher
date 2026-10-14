@@ -1,9 +1,10 @@
-import type { HeroState, HeroStats, Monster } from '../types';
-import { BOSS, ENRAGE, LEVEL_UP, xpForLevel } from '../gameData';
+import type { Element, HeroState, HeroStats, Monster } from '../types';
+import { BOSS, ENRAGE, LEVEL_UP, elementMult, xpForLevel } from '../gameData';
 
 interface HeroAttackOptions {
   mult?: number;      // множитель урона (для «Сокрушающего удара»)
   ignoreDef?: number; // какую долю брони монстра игнорировать (0–1)
+  element?: Element;  // стихия атаки героя: против слабости +50%, против сильной стороны -25%
 }
 
 /** Удар героя по монстру: урон, крит и сколько здоровья вернёт вампиризм. */
@@ -13,7 +14,8 @@ export function rollHeroAttack(stats: HeroStats, monster: Monster, opts: HeroAtt
   const armor = Math.floor(monster.def * 0.6 * (1 - (opts.ignoreDef ?? 0)));    // броня гасит 60% защиты
   const afterArmor = Math.max(1, rawAttack - armor);
   const base = crit ? afterArmor * (stats.critDmg / 100) : afterArmor;
-  const dmg = Math.max(1, Math.round(base * (opts.mult ?? 1)));
+  const el = opts.element ? elementMult(opts.element, monster.element) : 1;
+  const dmg = Math.max(1, Math.round(base * (opts.mult ?? 1) * el));
   const lifestealHeal = Math.round((dmg * stats.lifesteal) / 100);
   return { dmg, crit, lifestealHeal };
 }
