@@ -94,7 +94,7 @@ export default function App() {
       {!started && <SplashScreen onStart={start} />}
 
       {/* ── верхняя панель ── */}
-      <header className="shrink-0 px-3 pt-2 pb-1.5">
+      <header className="shrink-0 px-3 pt-2 pb-1.5 relative z-[60]">
         <div className="panel rounded-xl px-3 py-2 flex items-center justify-between gap-2 text-sm">
           <div className="flex items-center gap-x-3 gap-y-0.5 flex-wrap min-w-0">
             <span className="text-yellow-400 font-black">{WORLDS[state.world].emoji} Этаж {hero.floor}</span>
@@ -103,10 +103,10 @@ export default function App() {
             {state.meta.gems > 0 && <span className="text-cyan-300 text-xs font-bold">💎 {state.meta.gems}</span>}
             {state.meta.souls > 0 && <span className="text-purple-300 text-xs">👻 {state.meta.souls}</span>}
           </div>
-          <button onClick={() => { play('click'); setShowMap(true); }} aria-label="Карта миров" className="btn-fantasy shrink-0 px-2.5 py-1 rounded-lg text-sm font-bold">🗺️</button>
+          <button onClick={() => { play('click'); setShowMap(true); }} aria-label="Карта миров" className="btn-fantasy shrink-0 px-3 py-1.5 rounded-lg text-sm font-bold touch-manipulation">🗺️</button>
           <button
             onClick={() => game.setAutoFight(a => !a)}
-            className={`btn-fantasy shrink-0 px-3 py-1 rounded-lg text-xs font-bold ${game.autoFight ? '' : 'opacity-80'}`}
+            className={`btn-fantasy shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold touch-manipulation ${game.autoFight ? '' : 'opacity-80'}`}
           >
             {game.autoFight ? '⏸ Пауза' : '▶ Бой'}
           </button>
@@ -189,7 +189,7 @@ export default function App() {
 
       {/* ── окна ── */}
       {toast && (
-        <div key={toast.id} className="toast fixed left-1/2 z-[90] px-4 py-2 rounded-full bg-amber-900/95 border border-amber-400 text-amber-100 font-black text-sm shadow-lg"
+        <div key={toast.id} className="toast pointer-events-none fixed left-1/2 z-[90] px-4 py-2 rounded-full bg-amber-900/95 border border-amber-400 text-amber-100 font-black text-sm shadow-lg"
              style={{ top: 'calc(var(--sat) + 10px)' }}>
           {toast.text}
         </div>
