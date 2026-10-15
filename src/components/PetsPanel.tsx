@@ -1,9 +1,12 @@
 import { memo } from 'react';
 import type { Meta, PetId } from '../types';
-import { EGG, PETS, PET_MAX } from '../gameData';
+import { EGG, PETS, PET_CRATES, PET_GEAR_MULT, PET_MAX, PET_SLOTS, RARITY_COLORS, RARITY_NAME, petCrateGoldCost, petGearMult } from '../gameData';
 
 /** Питомцы: яйцо с босса, вылупление за победы, один активный помощник. */
-function PetsPanel({ meta, onSet }: { meta: Meta; onSet: (id: PetId | null) => void }) {
+interface Props { meta: Meta; gold: number; floor: number; coin: string; canBuyWithGold: boolean; onSet: (id: PetId | null) => void; onCrate: (kind: 'basic' | 'gem') => void }
+
+function PetsPanel({ meta, gold, floor, coin, canBuyWithGold, onSet, onCrate }: Props) {
+  const goldCost = petCrateGoldCost(floor);
   const owned = PETS.filter(p => meta.pets[p.id] > 0).length;
   const incubating = meta.egg >= 0;
   const pct = incubating ? Math.round((meta.egg / EGG.kills) * 100) : 0;
@@ -24,6 +27,31 @@ function PetsPanel({ meta, onSet }: { meta: Meta; onSet: (id: PetId | null) => v
             <div className="absolute inset-0 bg-gradient-to-r from-pink-500 to-amber-300" style={{ transform: `translateX(${pct - 100}%)` }} />
           </div>
         )}
+      </div>
+      <div className="rounded-lg bg-black/35 border border-pink-500/30 p-2 mb-2">
+        <div className="text-xs font-bold text-pink-200 mb-1.5 text-center">🎽 Снаряжение питомца: бонусы ×{petGearMult(meta.petGear).toFixed(2)}</div>
+        <div className="grid grid-cols-3 gap-1.5 mb-2">
+          {PET_SLOTS.map(sl => {
+            const r = meta.petGear[sl.id];
+            const c = r ? RARITY_COLORS[r] : null;
+            return (
+              <div key={sl.id} className={`rounded-lg p-1.5 text-center border bg-black/30 ${c ? c.border : 'border-dashed border-purple-800/50'}`}>
+                <div className={`text-2xl ${r ? '' : 'grayscale opacity-50'}`}>{sl.emoji}</div>
+                <div className="text-[10px] text-purple-200 leading-tight">{sl.name}</div>
+                <div className={`text-[10px] font-bold ${c ? c.text : 'text-purple-400'}`}>{r ? `${RARITY_NAME[r]} +${Math.round(PET_GEAR_MULT[r] * 100)}%` : 'пусто'}</div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="grid grid-cols-2 gap-1.5">
+          <button disabled={!canBuyWithGold || gold < goldCost} onClick={() => onCrate('basic')} className="btn-fantasy py-2 rounded-lg text-xs font-bold disabled:opacity-50 leading-tight">
+            {PET_CRATES.basic.emoji} {PET_CRATES.basic.name}<br />{coin} {goldCost}
+          </button>
+          <button disabled={meta.gems < PET_CRATES.gem.gemCost} onClick={() => onCrate('gem')} className="btn-purple py-2 rounded-lg text-xs font-bold disabled:opacity-50 leading-tight">
+            {PET_CRATES.gem.emoji} {PET_CRATES.gem.name}<br />💎 {PET_CRATES.gem.gemCost}
+          </button>
+        </div>
+        <p className="text-[10px] text-purple-300/70 text-center mt-1 leading-tight">Ящик даёт случайную вещь в случайный слот. Не лучше текущей — золото частично возвращается.</p>
       </div>
       <div className="space-y-1.5">
         {PETS.map(p => {

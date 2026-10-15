@@ -1,5 +1,6 @@
 import { memo } from 'react';
 import type { Equipment, Rarity } from '../types';
+import { HellSprite, MageSprite, ThiefSprite } from './HeroVariants';
 
 /*
  * ГЕРОЙ — рыцарь, нарисованный в SVG (никаких картинок).
@@ -26,9 +27,13 @@ interface Props {
   swingKey: number;   // меняется при каждом ударе — перезапускает взмах меча
   heavy: boolean;     // сильный удар: взмах шире
   dead: boolean;
+  variant?: 'warrior' | 'mage' | 'thief' | 'hell'; // облик: класс героя или герой Преисподней
 }
 
-function HeroSprite({ equipped, swingKey, heavy, dead }: Props) {
+function HeroSprite({ equipped, swingKey, heavy, dead, variant = 'warrior' }: Props) {
+  if (variant === 'mage') return <MageSprite equipped={equipped} swingKey={swingKey} heavy={heavy} dead={dead} />;
+  if (variant === 'thief') return <ThiefSprite equipped={equipped} swingKey={swingKey} heavy={heavy} dead={dead} />;
+  if (variant === 'hell') return <HellSprite equipped={equipped} swingKey={swingKey} heavy={heavy} dead={dead} />;
   const weapon = equipped.weapon?.rarity ?? 'none';
   const armor = equipped.armor?.rarity ?? 'none';
   const amulet = equipped.amulet?.rarity;

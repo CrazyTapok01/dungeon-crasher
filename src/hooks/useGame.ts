@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import type { AbilityId, ClassId, PetId, Element, Item, ItemSlot, Rarity, Skill, SkillId, UpgradeKind } from '../types';
+import type { AbilityId, ClassId, PetId, WorldId, Element, Item, ItemSlot, Rarity, Skill, SkillId, UpgradeKind } from '../types';
 import { BANNER_DURATION_MS, COMBAT_TICK_MS, RESPAWN_DELAY_MS, SKILLS, skillMaxLevel, skillUnlocked } from '../gameData';
 import { computeStats } from '../game/stats';
 import { extrasOf, gameReducer, loadInitialState } from '../game/reducer';
@@ -72,7 +72,7 @@ export function useGame() {
       const st = latest.current;
       saveGame({
         hero: st.hero, skillLevels: st.skillLevels, equipped: st.equipped, inventory: st.inventory,
-        meta: st.meta, upgradeCounts: st.upgradeCounts, settings: st.settings, heroClass: st.heroClass, talents: st.talents,
+        meta: st.meta, upgradeCounts: st.upgradeCounts, settings: st.settings, heroClass: st.heroClass, talents: st.talents, world: st.world, offRun: st.offRun,
       });
     };
     if (saveTimer.current === null) saveTimer.current = window.setTimeout(flush, 5000);
@@ -84,7 +84,7 @@ export function useGame() {
       document.removeEventListener('visibilitychange', onHide);
       window.removeEventListener('pagehide', flush);
     };
-  }, [state.hero, state.skillLevels, state.equipped, state.inventory, state.meta, state.upgradeCounts, state.settings, state.heroClass, state.talents]);
+  }, [state.hero, state.skillLevels, state.equipped, state.inventory, state.meta, state.upgradeCounts, state.settings, state.heroClass, state.talents, state.world, state.offRun]);
 
   // Свернул игру на телефоне и вернулся — выдаём награду за отсутствие
   useEffect(() => {
@@ -115,6 +115,10 @@ export function useGame() {
     enhance: (slot: ItemSlot) => dispatch({ type: 'ENHANCE', slot }),
     buyTalent: (id: string) => dispatch({ type: 'BUY_TALENT', id }),
     setPet: (id: PetId | null) => dispatch({ type: 'SET_PET', id }),
+    travel: (to: WorldId) => dispatch({ type: 'TRAVEL', to }),
+    openHell: () => dispatch({ type: 'OPEN_HELL' }),
+    buyGem: (id: string) => dispatch({ type: 'BUY_GEM', id }),
+    petCrate: (kind: 'basic' | 'gem') => dispatch({ type: 'PET_CRATE', kind }),
     setClass: (id: ClassId) => dispatch({ type: 'SET_CLASS', id }),
     setElement: (element: Element) => dispatch({ type: 'SET_ELEMENT', element }),
     setAutoElement: (value: boolean) => dispatch({ type: 'SET_AUTO_ELEMENT', value }),

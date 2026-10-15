@@ -1,6 +1,7 @@
 import type { ClassId, Equipment, Item, ItemSlot } from '../types';
-import { ENHANCE, RARITY_COLORS, classDef, enhanceCost, enhanced } from '../gameData';
+import { ENHANCE, RARITY_COLORS, classDef, heroVariant, enhanceCost, enhanced } from '../gameData';
 import HeroSprite from './HeroSprite';
+import { useWorld } from './coin';
 
 interface Props {
   equipped: Equipment;
@@ -45,17 +46,18 @@ function Tile({ slot, item, gold, onEnhance }: { slot: ItemSlot; item?: Item; go
 
 /** «Кукла» героя: надетые вещи вокруг персонажа. */
 export default function PaperDoll({ equipped, gold, heroClass, onEnhance }: Props) {
+  const world = useWorld();
   return (
     <div className="rounded-xl bg-gradient-to-b from-purple-950/70 to-black/50 border border-purple-800/50 p-2 mb-4">
       <div className="text-center text-xs font-bold text-amber-200 mb-1">
-        {heroClass ? `${classDef(heroClass).emoji} ${classDef(heroClass).name}` : 'Крушитель'}
+        {world === 'hell' ? '😈 Охотник на демонов' : heroClass ? `${classDef(heroClass).emoji} ${classDef(heroClass).name}` : 'Крушитель'}
       </div>
       <div className="grid grid-cols-[1fr_1.1fr_1fr] gap-2 items-center">
         <Tile slot="weapon" item={equipped.weapon} gold={gold} onEnhance={() => onEnhance('weapon')} />
         <div className="relative h-[170px] overflow-hidden flex items-end justify-center">
           <div className="absolute inset-x-2 bottom-1 h-5 rounded-full bg-black/60 blur-[2px]" />
           <div className="w-[120px] origin-bottom scale-[0.82]">
-            <HeroSprite equipped={equipped} swingKey={0} heavy={false} dead={false} />
+            <HeroSprite equipped={equipped} swingKey={0} heavy={false} dead={false} variant={heroVariant(world, heroClass)} />
           </div>
         </div>
         <Tile slot="armor" item={equipped.armor} gold={gold} onEnhance={() => onEnhance('armor')} />

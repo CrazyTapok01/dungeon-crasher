@@ -1,4 +1,5 @@
 import type { Item } from '../types';
+import { useCoin } from './coin';
 import { ENHANCE, RARITY_COLORS, RARITY_NAME, enhanceCost, enhanced, itemScore, sellPrice } from '../gameData';
 
 interface Props {
@@ -29,6 +30,7 @@ function Stats({ item }: { item: Item }) {
 }
 
 export default function ItemCard({ item: raw, compareTo, equipped, onEquip, onSell, gold = 0, onEnhance }: Props) {
+  const coin = useCoin();
   const item = enhanced(raw);
   const plus = raw.plus ?? 0;
   const c = RARITY_COLORS[item.rarity];
@@ -53,13 +55,13 @@ export default function ItemCard({ item: raw, compareTo, equipped, onEquip, onSe
           ? <div className="mt-2 text-center text-[11px] font-bold text-amber-300">⚒️ Максимальная заточка</div>
           : <button onClick={onEnhance} disabled={gold < enhanceCost(raw)}
               className="btn-fantasy w-full mt-2 py-1.5 rounded-lg text-xs font-bold disabled:opacity-50">
-              ⚒️ Заточить +{plus + 1} · 💰 {enhanceCost(raw)}
+              ⚒️ Заточить +{plus + 1} · {coin} {enhanceCost(raw)}
             </button>
       )}
       {(onEquip || onSell) && (
         <div className="mt-2 flex gap-1.5">
           {onEquip && <button onClick={onEquip} className="btn-fantasy flex-1 py-1.5 rounded-lg text-xs font-bold">Надеть</button>}
-          {onSell && <button onClick={onSell} className="btn-fantasy flex-1 py-1.5 rounded-lg text-xs font-bold">💰 {sellPrice(raw)}</button>}
+          {onSell && <button onClick={onSell} className="btn-fantasy flex-1 py-1.5 rounded-lg text-xs font-bold">{coin} {sellPrice(raw)}</button>}
         </div>
       )}
     </div>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useGame } from './hooks/useGame';
-import { ACHIEVEMENTS, PERKS, PRESTIGE, RELICS, dailyPreview, spentTalents, talentPoints, SKILLS, inventoryLimit, itemScore, skillCost, soulsForFloor } from './gameData';
+import { WORLDS, ACHIEVEMENTS, PERKS, PRESTIGE, RELICS, dailyPreview, spentTalents, talentPoints, SKILLS, inventoryLimit, itemScore, skillCost, soulsForFloor } from './gameData';
 import { isMuted, play, setMuted, unlockAudio } from './game/audio';
 import BattleScene from './components/BattleScene';
 import AbilityBar from './components/AbilityBar';
@@ -16,6 +16,8 @@ import ClassSelect from './components/ClassSelect';
 import ElementBar from './components/ElementBar';
 import TalentsPanel from './components/TalentsPanel';
 import CraftPanel from './components/CraftPanel';
+import WorldMap from './components/WorldMap';
+import { CoinContext, WorldContext } from './components/coin';
 
 type Tab = 'combat' | 'hero' | 'inventory' | 'craft' | 'shop' | 'more';
 
@@ -40,8 +42,14 @@ export default function App() {
   const [started, setStarted] = useState(false);
   const [tab, setTab] = useState<Tab>('combat');
   const [muted, setMutedState] = useState(isMuted());
+  const [showMap, setShowMap] = useState(false);
   const [confirm, setConfirm] = useState<'rebirth' | 'reset' | null>(null);
   const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
+
+  // Оформление Преисподней: меняем фон страницы и панелей
+  useEffect(() => {
+    document.body.classList.toggle('hell-body', state.world === 'hell');
+  }, [state.world]);
 
   // Всплывающая плашка при получении достижения
   useEffect(() => {
@@ -80,6 +88,8 @@ export default function App() {
   };
 
   return (
+    <CoinContext.Provider value={WORLDS[state.world].coin}>
+    <WorldContext.Provider value={state.world}>
     <div className="h-full flex flex-col max-w-xl mx-auto" style={{ paddingTop: 'var(--sat)', paddingLeft: 'var(--sal)', paddingRight: 'var(--sar)' }}>
       {!started && <SplashScreen onStart={start} />}
 
@@ -87,11 +97,13 @@ export default function App() {
       <header className="shrink-0 px-3 pt-2 pb-1.5">
         <div className="panel rounded-xl px-3 py-2 flex items-center justify-between gap-2 text-sm">
           <div className="flex items-center gap-x-3 gap-y-0.5 flex-wrap min-w-0">
-            <span className="text-yellow-400 font-black">🏰 Этаж {hero.floor}</span>
+            <span className="text-yellow-400 font-black">{WORLDS[state.world].emoji} Этаж {hero.floor}</span>
             <span className="text-purple-300 text-xs">{hero.stage}/10</span>
-            <span className="text-yellow-300 font-bold">💰 {hero.gold}</span>
+            <span className="text-yellow-300 font-bold">{WORLDS[state.world].coin} {hero.gold}</span>
+            {state.meta.gems > 0 && <span className="text-cyan-300 text-xs font-bold">💎 {state.meta.gems}</span>}
             {state.meta.souls > 0 && <span className="text-purple-300 text-xs">👻 {state.meta.souls}</span>}
           </div>
+          <button onClick={() => { play('click'); setShowMap(true); }} aria-label="Карта миров" className="btn-fantasy shrink-0 px-2.5 py-1 rounded-lg text-sm font-bold">🗺️</button>
           <button
             onClick={() => game.setAutoFight(a => !a)}
             className={`btn-fantasy shrink-0 px-3 py-1 rounded-lg text-xs font-bold ${game.autoFight ? '' : 'opacity-80'}`}
@@ -154,14 +166,14 @@ export default function App() {
         {tab === 'more' && (
           <MorePanel
             hero={hero} meta={state.meta} muted={muted} autoAbilities={state.settings.autoAbilities}
-            onRebirth={() => setConfirm('rebirth')} onClaimDaily={game.claimDaily} onSetPet={game.setPet} onReset={() => setConfirm('reset')}
+            onRebirth={() => setConfirm('rebirth')} onClaimDaily={game.claimDaily} onSetPet={game.setPet} onBuyGem={game.buyGem} onPetCrate={game.petCrate} onReset={() => setConfirm('reset')}
             onToggleSound={toggleSound} onToggleAuto={() => game.setAutoAbilities(!state.settings.autoAbilities)}
           />
         )}
       </main>
 
       {/* ── нижняя навигация ── */}
-      {started && state.heroClass === null && <ClassSelect rebirths={state.meta.rebirths} onPick={game.setClass} />}
+      {started && state.world === 'dungeon' && state.heroClass === null && <ClassSelect rebirths={state.meta.rebirths} onPick={game.setClass} />}
 
       <nav className="shrink-0 grid grid-cols-6 gap-1 px-2 pt-1.5 border-t border-purple-900/60 bg-black/80"
            style={{ paddingBottom: 'max(var(--sab), 6px)' }}>
@@ -181,6 +193,10 @@ export default function App() {
              style={{ top: 'calc(var(--sat) + 10px)' }}>
           {toast.text}
         </div>
+      )}
+      {showMap && (
+        <WorldMap world={state.world} meta={state.meta} offFloor={state.offRun?.hero.floor ?? 1}
+          onTravel={w => { setTab('combat'); game.travel(w); }} onOpen={game.openHell} onClose={() => setShowMap(false)} />
       )}
       {state.offlineReport && <OfflineModal report={state.offlineReport} onClose={game.dismissOffline} />}
       {confirm === 'rebirth' && (
@@ -202,5 +218,7 @@ export default function App() {
         />
       )}
     </div>
+    </WorldContext.Provider>
+    </CoinContext.Provider>
   );
 }

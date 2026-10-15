@@ -1,5 +1,5 @@
 import type {
-  AbilityId, ClassId, PetId, Cooldowns, Element, Equipment, GameEvent, GameEventBody, HeroState, HeroStats, HeroStatus,
+  AbilityId, ClassId, PetId, PetSlot, RunSnapshot, WorldId, Cooldowns, Element, Equipment, GameEvent, GameEventBody, HeroState, HeroStats, HeroStatus,
   Item, ItemSlot, LogEntry, Rarity, LogType, Meta, Monster, MonsterAi, OfflineReport, Settings,
   SkillId, SkillLevels, UpgradeCounts, UpgradeKind,
 } from '../types';
@@ -9,7 +9,7 @@ import {
   SHIELD, SHOP_POTION, SHOP_UPGRADES, SKILLS, STAGES_PER_FLOOR, STRIKE, SWIFT_DODGE, THORNS_FRAC,
   TRAITS, abilityDef, abilityUnlocked, baseMonsterStats, biomeForFloor, chestCost, chestMinRarity,
   deathGoldKept, emptyCooldowns, emptyMeta, emptySkillLevels, emptyUpgradeCounts, generateItem,
-  generateMonster, EGG, PET_MAX, PETS, TALENTS, TALENT_MAX, petDef, spentTalents, talentBonus, talentPoints, CLASSES, CLASS_BONUS, CRAFT_RECIPES, counterOf, craftItem, craftGroups, ENHANCE, dailyPreview, enhanceCost, sellPrice, todayKey, inventoryLimit, RELICS, RELIC_DROP, RELIC_MAX, QUEST_INFO, fillQuests, questProgress, itemScore, junkItems, skillCost, skillMaxLevel, skillUnlocked,
+  generateMonster, GEM, GEM_SHOP, HELL, PET_CRATES, PET_GEAR_MULT, PET_SLOTS, WORLDS, gemLevel, gemUpgradeCost, petCrateGoldCost, petGearMult, EGG, PET_MAX, PETS, TALENTS, TALENT_MAX, petDef, spentTalents, talentBonus, talentPoints, CLASSES, CLASS_BONUS, CRAFT_RECIPES, counterOf, craftItem, craftGroups, ENHANCE, dailyPreview, enhanceCost, sellPrice, todayKey, inventoryLimit, RELICS, RELIC_DROP, RELIC_MAX, QUEST_INFO, fillQuests, questProgress, itemScore, junkItems, skillCost, skillMaxLevel, skillUnlocked,
   soulsForFloor, upgradeAmount, upgradeCost,
 } from '../gameData';
 import { computeStats, type Extras } from './stats';
@@ -38,6 +38,8 @@ export interface GameState {
   settings: Settings;
   heroClass: ClassId | null; // null — класс ещё не выбран
   talents: Record<string, number>; // вложенные очки талантов (сбрасываются перерождением)
+  world: WorldId;            // в каком мире сейчас герой
+  offRun: RunSnapshot | null; // забег другого мира (хранится, пока мы не там)
   heroElement: Element;      // стихия атак героя
 
   // ── текущий бой (не сохраняется) ──
@@ -76,6 +78,10 @@ export type Action =
   | { type: 'SET_CLASS'; id: ClassId }
   | { type: 'BUY_TALENT'; id: string }
   | { type: 'SET_PET'; id: PetId | null }
+  | { type: 'TRAVEL'; to: WorldId }
+  | { type: 'OPEN_HELL' }
+  | { type: 'BUY_GEM'; id: string }
+  | { type: 'PET_CRATE'; kind: 'basic' | 'gem' }
   | { type: 'SET_ELEMENT'; element: Element }
   | { type: 'SET_AUTO_ELEMENT'; value: boolean }
   | { type: 'CRAFT'; slot: ItemSlot; from: Rarity }
@@ -93,10 +99,12 @@ const newId = () => ++nextId;
 const NO_EVENTS: GameEvent[] = [];
 
 /** Что ещё усиливает героя: реликвии, класс, таланты, питомец. */
-export const extrasOf = (s: Pick<GameState, 'heroClass' | 'talents' | 'meta'>): Extras => ({
+export const extrasOf = (s: Pick<GameState, 'heroClass' | 'talents' | 'meta' | 'world'>): Extras => ({
   relics: s.meta.relics,
-  heroClass: s.heroClass,
+  heroClass: s.world === 'hell' ? null : s.heroClass, // в Преисподней свой герой — без класса
   talents: s.talents,
+  petMult: petGearMult(s.meta.petGear),
+  gemUps: s.meta.gemUps,
   pet: s.meta.activePet && s.meta.pets[s.meta.activePet] > 0 ? { id: s.meta.activePet, level: s.meta.pets[s.meta.activePet] } : null,
 });
 
@@ -162,7 +170,7 @@ function announceMonster(s: GameState): GameState {
 
 /** Выставляет на текущем этаже и стадии нового монстра; первым бьёт герой. */
 function spawnMonster(s: GameState): GameState {
-  const monster = generateMonster(s.hero.floor, s.hero.stage);
+  const monster = generateMonster(s.hero.floor, s.hero.stage, s.world);
   return announceMonster({
     ...s,
     heroElement: s.settings.autoElement ? counterOf(monster.element) : s.heroElement,
@@ -171,21 +179,29 @@ function spawnMonster(s: GameState): GameState {
   });
 }
 
+/** Стихия героя при смене мира: авто — выигрышная против нового монстра. */
+function s0Element(s: GameState, m: Monster): Element {
+  return s.settings.autoElement ? counterOf(m.element) : s.heroElement;
+}
+
 function createState(save: SaveData | null): GameState {
   const meta = save?.meta ?? emptyMeta();
   const hero = save?.hero ?? INITIAL_HERO;
-  const monster = generateMonster(hero.floor, hero.stage);
+  const world: WorldId = save?.world ?? 'dungeon';
+  const monster = generateMonster(hero.floor, hero.stage, world);
 
   let s: GameState = {
     hero,
     skillLevels: save?.skillLevels ?? emptySkillLevels(),
     equipped: save?.equipped ?? {},
     inventory: save?.inventory ?? [],
-    meta: fillQuests({ ...meta, maxFloor: Math.max(meta.maxFloor, hero.floor) }),
+    meta: fillQuests(world === 'dungeon' ? { ...meta, maxFloor: Math.max(meta.maxFloor, hero.floor) } : meta),
     upgradeCounts: save?.upgradeCounts ?? emptyUpgradeCounts(),
     settings: save?.settings ?? { autoAbilities: true, autoElement: false },
     heroClass: save?.heroClass ?? null,
     talents: save?.talents ?? {},
+    world: save?.world ?? 'dungeon',
+    offRun: save?.offRun ?? null,
     heroElement: counterOf(monster.element),
     monster,
     monsterId: newId(),
@@ -234,8 +250,9 @@ function applyOffline(s: GameState, seconds: number): GameState {
 
   const stats = statsOf(s);
   const ref = baseMonsterStats(s.hero.floor, 5, false);
-  const gold = Math.round(kills * ref.gold * 1.15 * (1 + stats.goldBonus / 100));
-  const xp = Math.round(kills * ref.xp * (1 + stats.xpBonus / 100));
+  const hk = s.world === 'hell' ? HELL.monster : { gold: 1, xp: 1 };
+  const gold = Math.round(kills * ref.gold * hk.gold * 1.15 * (1 + stats.goldBonus / 100));
+  const xp = Math.round(kills * ref.xp * hk.xp * (1 + stats.xpBonus / 100));
   const { hero: afterXp, levelsGained } = applyXp(s.hero, xp);
 
   const next: GameState = {
@@ -501,14 +518,21 @@ function defeatMonster(state: GameState): GameState {
   // 3. предмет (с боссов — всегда, с элитных — почти всегда)
   const dropChance = monster.isBoss ? DROP.bossItemChance : monster.isElite ? DROP.eliteItemChance : DROP.itemChance;
   if (Math.random() < dropChance) {
-    s = dropItem(s, generateItem(s.hero.floor, monster.isBoss || monster.isElite));
+    s = dropItem(s, generateItem(s.hero.floor, monster.isBoss || monster.isElite, 'common', s.world));
+  }
+
+  // 3а-1. кристалл бездны с босса (редко)
+  if (monster.isBoss) {
+    const hell = s.world === 'hell';
+    const chance = (hell ? HELL.gemBossChance : s.hero.floor >= GEM.minBossFloor ? GEM.bossChance : 0) * luck(s);
+    if (Math.random() < chance) s = addGems(s, 1, 'босс');
   }
 
   // 3а. яйцо питомца: с босса, потом греется убийствами
   s = tickEgg(s, monster.isBoss);
 
   // 3б. реликвия (боссы — часто, элитные — редко)
-  const relicChance = monster.isBoss ? RELIC_DROP.boss : monster.isElite ? RELIC_DROP.elite : 0;
+  const relicChance = (monster.isBoss ? RELIC_DROP.boss : monster.isElite ? RELIC_DROP.elite : 0) * luck(s);
   if (relicChance > 0 && Math.random() < relicChance) s = dropRelic(s);
 
   // 4. зелье
@@ -520,25 +544,39 @@ function defeatMonster(state: GameState): GameState {
   // 5. следующая стадия или следующий этаж
   const { floor, stage } = s.hero;
   if (stage >= STAGES_PER_FLOOR) {
-    const biome = biomeForFloor(floor + 1);
+    const biome = biomeForFloor(floor + 1, s.world);
     s = withLog(s, `🏰 Ты покорил этаж ${floor}! Новый этаж: ${floor + 1} — ${biome.name}`, 'boss');
+    const hell = s.world === 'hell';
+    const record = floor + 1 > (hell ? s.meta.hellMax : s.meta.maxFloor); // кристалл только за новый рекорд этажа
     s = {
       ...s,
       showFloorBanner: true,
       hero: { ...s.hero, floor: floor + 1, stage: 1 },
-      meta: { ...s.meta, maxFloor: Math.max(s.meta.maxFloor, floor + 1) },
+      meta: hell
+        ? { ...s.meta, hellMax: Math.max(s.meta.hellMax, floor + 1) }
+        : { ...s.meta, maxFloor: Math.max(s.meta.maxFloor, floor + 1) },
     };
     s = emit(s, { type: 'floor_cleared', floor });
+    // кристаллы за «круглые» этажи
+    if (record && floor % (hell ? HELL.gemEveryFloors : GEM.everyFloors) === 0) s = addGems(s, 1, `этаж ${floor}`);
   } else {
     s = { ...s, hero: { ...s.hero, stage: stage + 1 } };
   }
   return spawnMonster(s);
 }
 
+/** Бонус «Печати удачи» к шансам реликвий и яиц. */
+const luck = (s: GameState): number => 1 + gemLevel(s.meta.gemUps, 'luck') * 0.1;
+
+function addGems(s: GameState, n: number, why: string): GameState {
+  s = { ...s, meta: { ...s.meta, gems: s.meta.gems + n } };
+  return emit(withLog(s, `💎 Кристалл бездны! +${n} (${why})`, 'boss'), { type: 'quest', text: `💎 +${n} кристалл бездны` });
+}
+
 function tickEgg(s: GameState, boss: boolean): GameState {
   let { egg } = s.meta;
   if (egg < 0) {
-    if (!boss || Math.random() >= EGG.chance) return s;
+    if (!boss || Math.random() >= EGG.chance * luck(s)) return s;
     s = withLog(s, `🥚 С босса упало яйцо! Оно проклюнется через ${EGG.kills} побед`, 'boss');
     return emit({ ...s, meta: { ...s.meta, egg: 0 } }, { type: 'quest', text: '🥚 Найдено яйцо питомца!' });
   }
@@ -647,7 +685,7 @@ function reduce(state: GameState, action: Action): GameState {
 
   switch (action.type) {
     case 'TICK': {
-      if (state.isDead || state.heroClass === null) return state;
+      if (state.isDead || (state.world === 'dungeon' && state.heroClass === null)) return state;
       let s: GameState = {
         ...fresh,
         cooldowns: {
@@ -707,14 +745,14 @@ function reduce(state: GameState, action: Action): GameState {
     case 'BUY_CHEST': {
       const cost = chestCost(state.hero.floor);
       if (state.hero.gold < cost || state.inventory.length >= inventoryLimit(state.meta.rebirths)) return state;
-      const item = generateItem(state.hero.floor, true, chestMinRarity(state.meta.rebirths));
+      const item = generateItem(state.hero.floor, true, chestMinRarity(state.meta.rebirths), state.world);
       let s = withGold(fresh, -cost);
       s = dropItem(s, item);
       return { ...s, chestResult: item };
     }
 
     case 'SET_CLASS': {
-      if (state.heroClass !== null) return state;
+      if (state.heroClass !== null || state.world !== 'dungeon') return state;
       const s = { ...fresh, heroClass: action.id };
       const hp = statsOf(s).maxHp;
       return emit(withLog({ ...s, hero: { ...s.hero, hp } }, `🎭 Выбран класс: ${CLASSES.find(c => c.id === action.id)!.name}`, 'boss'), { type: 'ui', kind: 'equip' });
@@ -745,6 +783,72 @@ function reduce(state: GameState, action: Action): GameState {
       if ((state.talents[t.id] ?? 0) >= TALENT_MAX || talentPoints(state.hero.level) - spentTalents(state.talents) <= 0) return state;
       const s = { ...fresh, talents: { ...state.talents, [t.id]: (state.talents[t.id] ?? 0) + 1 } };
       return emit(withLog(s, `${t.emoji} Талант «${t.name}» → ур. ${s.talents[t.id]}`, 'ability'), { type: 'ui', kind: 'buy' });
+    }
+
+    case 'OPEN_HELL': {
+      if (state.meta.hellOpen || state.meta.gems < HELL.openCost) return state;
+      const s = { ...fresh, meta: { ...state.meta, gems: state.meta.gems - HELL.openCost, hellOpen: true } };
+      return emit(withLog(s, '🔥 Портал в Преисподнюю открыт!', 'boss'), { type: 'quest', text: '🔥 Портал в Преисподнюю открыт!' });
+    }
+
+    case 'TRAVEL': {
+      if (action.to === state.world || (action.to === 'hell' && !state.meta.hellOpen)) return state;
+      const here: RunSnapshot = {
+        hero: state.hero, skillLevels: state.skillLevels, equipped: state.equipped, inventory: state.inventory,
+        upgradeCounts: state.upgradeCounts, talents: state.talents, heroClass: state.heroClass,
+      };
+      const there: RunSnapshot = state.offRun ?? {
+        hero: { ...HELL.hero }, skillLevels: emptySkillLevels(), equipped: {}, inventory: [],
+        upgradeCounts: emptyUpgradeCounts(), talents: {}, heroClass: null,
+      };
+      const monster = generateMonster(there.hero.floor, there.hero.stage, action.to);
+      let s: GameState = {
+        ...fresh, ...there, world: action.to, offRun: here,
+        monster, monsterId: newId(), monsterHp: monster.hp, monsterAi: freshAi(), turn: 'hero', isDead: false,
+        heroStatus: { ...NO_STATUS }, cooldowns: emptyCooldowns(), showFloorBanner: false, chestResult: null,
+        heroElement: s0Element(state, monster),
+      };
+      s = { ...s, hero: { ...s.hero, hp: Math.max(1, Math.min(s.hero.hp || 1, statsOf(s).maxHp)) } };
+      s = withLog(s, `${WORLDS[action.to].emoji} Ты переместился: ${WORLDS[action.to].name}`, 'boss');
+      return announceMonster(emit(s, { type: 'ui', kind: 'equip' }));
+    }
+
+    case 'BUY_GEM': {
+      const d = GEM_SHOP.find(x => x.id === action.id);
+      if (!d) return state;
+      const lvl = gemLevel(state.meta.gemUps, d.id);
+      const cost = gemUpgradeCost(d, lvl);
+      if (lvl >= d.max || state.meta.gems < cost) return state;
+      const meta = { ...state.meta, gems: state.meta.gems - cost, gemUps: { ...state.meta.gemUps, [d.id]: lvl + 1 } };
+      const s = clampHp({ ...fresh, meta });
+      return emit(withLog(s, `${d.emoji} ${d.name} → ур. ${lvl + 1}`, 'ability'), { type: 'ui', kind: 'buy' });
+    }
+
+    case 'PET_CRATE': {
+      const crate = PET_CRATES[action.kind];
+      const goldCost = action.kind === 'basic' ? petCrateGoldCost(state.hero.floor) : 0;
+      if (state.meta.gems < crate.gemCost || state.hero.gold < goldCost) return state;
+      const order: Rarity[] = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
+      const total = crate.weights.reduce((a, b) => a + b, 0);
+      let roll = Math.random() * total;
+      let ri = 0;
+      for (; ri < crate.weights.length - 1; ri++) { roll -= crate.weights[ri]; if (roll < 0) break; }
+      const rarity = order[ri];
+      const slot: PetSlot = PET_SLOTS[Math.floor(Math.random() * PET_SLOTS.length)].id;
+      const cur = state.meta.petGear[slot];
+      const better = !cur || PET_GEAR_MULT[rarity] > PET_GEAR_MULT[cur];
+      const def = PET_SLOTS.find(x => x.id === slot)!;
+      let s = withGold({ ...fresh, meta: { ...state.meta, gems: state.meta.gems - crate.gemCost } }, -goldCost);
+      let text: string;
+      if (better) {
+        s = { ...s, meta: { ...s.meta, petGear: { ...s.meta.petGear, [slot]: rarity } } };
+        text = `${def.emoji} ${def.name} питомца: ${RARITY_NAME[rarity]}! (+${Math.round(PET_GEAR_MULT[rarity] * 100)}% к бонусам)`;
+      } else {
+        const refund = Math.round(goldCost * 0.4);
+        s = withGold(s, refund);
+        text = `${def.emoji} ${def.name}: ${RARITY_NAME[rarity]} — не лучше имеющегося${refund ? ` (возврат ${refund} золота)` : ''}`;
+      }
+      return emit(withLog(s, text, 'loot'), { type: 'quest', text });
     }
 
     case 'SET_PET': {
@@ -800,8 +904,9 @@ function reduce(state: GameState, action: Action): GameState {
     }
 
     case 'REBIRTH': {
+      if (state.world !== 'dungeon') return state; // перерождение — только в основном мире
       const { floor } = state.hero;
-      const gain = soulsForFloor(floor, state.meta.rebirths);
+      const gain = Math.floor(soulsForFloor(floor, state.meta.rebirths) * (1 + gemLevel(state.meta.gemUps, 'souls') * 0.1));
       if (gain <= 0) return state;
       const meta: Meta = { ...state.meta, souls: state.meta.souls + gain, rebirths: state.meta.rebirths + 1 };
       let s = createState({
@@ -812,6 +917,8 @@ function reduce(state: GameState, action: Action): GameState {
         meta,
         upgradeCounts: emptyUpgradeCounts(),
         settings: state.settings,
+        world: 'dungeon',
+        offRun: state.offRun, // забег Преисподней не сбрасывается
       });
       s = withLog(s, `👻 ПЕРЕРОЖДЕНИЕ #${meta.rebirths}! Получено душ: ${gain}. Всего: ${meta.souls}`, 'boss');
       s = emit(s, { type: 'rebirth', souls: gain });

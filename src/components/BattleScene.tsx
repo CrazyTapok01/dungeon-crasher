@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { GameEvent, HeroStats } from '../types';
 import type { GameState } from '../game/reducer';
-import { RARITY_COLORS, biomeForFloor, petDef } from '../gameData';
+import { RARITY_COLORS, biomeForFloor, heroVariant, petDef } from '../gameData';
 import { useGfx } from '../game/perf';
 import ParticleLayer, { type ParticleHandle } from './ParticleLayer';
 import HeroSprite from './HeroSprite';
@@ -44,7 +44,8 @@ function Torch({ side }: { side: 'left' | 'right' }) {
 export default function BattleScene({ state, stats }: Props) {
   const pet = state.meta.activePet && state.meta.pets[state.meta.activePet] > 0 ? petDef(state.meta.activePet).emoji : null;
   const { hero, monster, monsterHp, monsterAi, heroStatus, equipped, isDead, events, showFloorBanner } = state;
-  const biome = biomeForFloor(hero.floor);
+  const biome = biomeForFloor(hero.floor, state.world);
+  const variant = heroVariant(state.world, state.heroClass);
   const { low } = useGfx();
 
   const sceneRef = useRef<HTMLDivElement>(null);
@@ -54,6 +55,7 @@ export default function BattleScene({ state, stats }: Props) {
   const monsterRef = useRef<HTMLDivElement>(null);
   const heroLayer = useRef<HTMLDivElement>(null);
   const monsterLayer = useRef<HTMLDivElement>(null);
+  const boltRef = useRef<HTMLDivElement>(null);
   const particles = useRef<ParticleHandle>(null);
   const timers = useRef<number[]>([]);
 
@@ -101,21 +103,56 @@ export default function BattleScene({ state, stats }: Props) {
       switch (e.type) {
         case 'hero_attack': {
           setSwing(s => ({ key: s.key + 1, heavy: e.heavy }));
-          const far = e.heavy ? '78%' : '58%';
-          anim(heroLayer.current, [
-            { transform: 'translateX(0) scale(1)' },
-            { transform: `translateX(${far}) scale(1.08)`, offset: 0.35 },
-            { transform: 'translateX(0) scale(1)' },
-          ], e.heavy ? 520 : 380);
+          // Стиль атаки зависит от класса: воин — рывок, маг — снаряд стихии, вор — два быстрых выпада, охотник — огненный рывок
+          const style = state.world === 'hell' ? 'hunter' : state.heroClass ?? 'warrior';
+          let hitDelay = 130;
+          if (style === 'mage') {
+            anim(heroLayer.current, [
+              { transform: 'translateX(0) scale(1)' },
+              { transform: 'translateX(-5%) scale(1.04)', offset: 0.3 },
+              { transform: 'translateX(0) scale(1)' },
+            ], 320);
+            const from = pos('hero'); const to = pos('monster');
+            const color = { fire: '#fb923c', ice: '#67e8f9', nature: '#86efac' }[state.heroElement];
+            const bolt = boltRef.current;
+            if (bolt && !reduced) {
+              bolt.style.background = `radial-gradient(circle, #fff 0%, ${color} 45%, transparent 72%)`;
+              bolt.animate([
+                { transform: `translate(${from.x + 10}px, ${from.y - 6}px) scale(.6)`, opacity: 1 },
+                { transform: `translate(${(from.x + to.x) / 2}px, ${(from.y + to.y) / 2 - 14}px) scale(1.1)`, opacity: 1, offset: 0.5 },
+                { transform: `translate(${to.x - 10}px, ${to.y}px) scale(.8)`, opacity: 0.9 },
+              ], { duration: 260, easing: 'ease-in', fill: 'none' });
+            }
+            burst('hit', 'hero', 40, { color });
+            hitDelay = 270;
+          } else if (style === 'thief') {
+            anim(heroLayer.current, [
+              { transform: 'translateX(0) scale(1)' },
+              { transform: 'translateX(46%) scale(1.06)', offset: 0.22 },
+              { transform: 'translateX(6%) scale(1)', offset: 0.42 },
+              { transform: 'translateX(52%) scale(1.08)', offset: 0.7 },
+              { transform: 'translateX(0) scale(1)' },
+            ], 300);
+            burst('hit', 'monster', 100);
+            hitDelay = 190;
+          } else {
+            const far = e.heavy ? '78%' : '58%';
+            anim(heroLayer.current, [
+              { transform: 'translateX(0) scale(1)' },
+              { transform: `translateX(${far}) scale(1.08)`, offset: 0.35 },
+              { transform: 'translateX(0) scale(1)' },
+            ], e.heavy ? 520 : 380);
+            if (style === 'hunter') { flash('#f97316', 0.16, 240); burst('smoke', 'hero', 0); }
+          }
           anim(monsterLayer.current, [
             { transform: 'translateX(0) rotate(0)', filter: 'brightness(2.6) saturate(0.2)' },
             { transform: 'translateX(14%) rotate(5deg)', filter: 'brightness(1.6)', offset: 0.3 },
             { transform: 'translateX(0) rotate(0)', filter: 'brightness(1)' },
-          ], 340, 130);
-          burst(e.heavy ? 'strike' : e.crit ? 'crit' : 'hit', 'monster', 130);
-          addFloat('monster', e.crit ? `${e.dmg}!` : `${e.dmg}`, e.heavy ? 'f-heavy' : e.crit ? 'f-crit' : 'f-dmg');
-          if (e.heavy) { later(() => shake(9, 320), 130); flash('#ffffff', 0.45); }
-          else if (e.crit) later(() => shake(5, 260), 130);
+          ], 340, hitDelay);
+          burst(e.heavy ? 'strike' : e.crit ? 'crit' : 'hit', 'monster', hitDelay);
+          later(() => addFloat('monster', e.crit ? `${e.dmg}!` : `${e.dmg}`, e.heavy ? 'f-heavy' : e.crit ? 'f-crit' : 'f-dmg'), hitDelay - 100);
+          if (e.heavy) { later(() => shake(9, 320), hitDelay); flash('#ffffff', 0.45); }
+          else if (e.crit) later(() => shake(5, 260), hitDelay);
           break;
         }
         case 'monster_dodge':
@@ -237,7 +274,7 @@ export default function BattleScene({ state, stats }: Props) {
   } as React.CSSProperties;
 
   return (
-    <div ref={sceneRef} className={`scene ${low ? 'lowfx' : ''}`} style={vars}>
+    <div ref={sceneRef} className={`scene ${low ? 'lowfx' : ''} ${state.world === 'hell' ? 'world-hell' : ''}`} style={vars}>
       <div ref={innerRef} className="scene-inner">
         {/* ── фон ── */}
         <div className="scene-wall" />
@@ -256,12 +293,13 @@ export default function BattleScene({ state, stats }: Props) {
           <div ref={heroLayer} className="actor-layer">
             <div className={`idle-hero ${isDead ? 'is-dead' : ''}`}>
               {heroStatus.shieldCharges > 0 && <div className="shield-bubble" />}
-              <HeroSprite equipped={equipped} swingKey={swing.key} heavy={swing.heavy} dead={isDead} />
+              <HeroSprite equipped={equipped} swingKey={swing.key} heavy={swing.heavy} dead={isDead} variant={variant} />
             </div>
           </div>
           {pet && <div className="pet-buddy">{pet}</div>}
           <div className="actor-shadow" />
         </div>
+        <div ref={boltRef} className="bolt" />
 
         {/* ── монстр ── */}
         <div

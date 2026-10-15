@@ -1,9 +1,9 @@
 import type {
-  ClassId, Equipment, HeroState, Item, ItemSlot, Meta, QuestKind, Settings, SkillLevels, UpgradeCounts,
+  ClassId, Equipment, HeroState, Item, ItemSlot, Meta, QuestKind, Rarity, RunSnapshot, WorldId, Settings, SkillLevels, UpgradeCounts,
 } from '../types';
 import {
   ACHIEVEMENTS, INITIAL_HERO, MAX_PERK_LEVELS, QUEST_INFO, RARITY_NAME, RELICS, RELIC_MAX, SKILLS,
-  STAGES_PER_FLOOR, PETS, PET_MAX, TALENTS, emptyPets, emptyMeta, emptyRelics, emptySkillLevels, fillQuests,
+  STAGES_PER_FLOOR, GEM_SHOP, PETS, PET_MAX, TALENTS, emptyPets, emptyMeta, emptyRelics, emptySkillLevels, fillQuests,
 } from '../gameData';
 
 const SAVE_KEY = 'dungeonCrasherSave_v3';
@@ -22,6 +22,8 @@ export interface SaveData {
   settings: Settings;
   heroClass?: ClassId | null;
   talents?: Record<string, number>;
+  world?: WorldId;
+  offRun?: RunSnapshot | null;
   lastSeen?: number; // когда игру закрыли (мс) — для офлайн-награды
 }
 
@@ -116,6 +118,8 @@ function sanitizeMeta(raw: unknown, hero: HeroState): Meta {
       : [],
     questsDone: num(r.questsDone),
     goblins: num(r.goblins),
+    gems: num(r.gems), hellMax: num(r.hellMax), hellOpen: r.hellOpen === true,
+    gemUps: sanitizeGemUps(r.gemUps), petGear: sanitizePetGear(r.petGear),
     pets, activePet: ap ? ap.id : null, egg: typeof r.egg === 'number' ? clamp(Math.floor(r.egg), -1, 999) : -1,
     daily: {
       last: typeof asRecord(r.daily).last === 'string' ? (asRecord(r.daily).last as string) : '',
@@ -125,11 +129,39 @@ function sanitizeMeta(raw: unknown, hero: HeroState): Meta {
   return fillQuests(meta);
 }
 
+function sanitizeGemUps(raw: unknown): Record<string, number> {
+  const r = asRecord(raw);
+  const out: Record<string, number> = {};
+  for (const d of GEM_SHOP) { const v = clamp(Math.floor(num(r[d.id])), 0, d.max); if (v > 0) out[d.id] = v; }
+  return out;
+}
+
+function sanitizePetGear(raw: unknown): Meta['petGear'] {
+  const r = asRecord(raw);
+  const pick = (v: unknown) => (typeof v === 'string' && v in RARITY_NAME ? (v as Rarity) : null);
+  return { collar: pick(r.collar), armor: pick(r.armor), charm: pick(r.charm) };
+}
+
 function sanitizeTalents(raw: unknown): Record<string, number> {
   const r = asRecord(raw);
   const out: Record<string, number> = {};
   for (const t of TALENTS) { const v = clamp(Math.floor(num(r[t.id])), 0, t.max); if (v > 0) out[t.id] = v; }
   return out;
+}
+
+function sanitizeRun(raw: unknown): RunSnapshot | null {
+  const r = asRecord(raw);
+  if (!r.hero) return null;
+  const inv = Array.isArray(r.inventory) ? r.inventory.filter(isItem) : [];
+  return {
+    hero: sanitizeHero(asRecord(r.hero)),
+    skillLevels: sanitizeLevels(r.skillLevels),
+    equipped: sanitizeEquipment(r.equipped),
+    inventory: inv,
+    upgradeCounts: sanitizeCounts(r.upgradeCounts),
+    talents: sanitizeTalents(r.talents),
+    heroClass: r.heroClass === 'warrior' || r.heroClass === 'mage' || r.heroClass === 'thief' ? r.heroClass : null,
+  };
 }
 
 function sanitizeCounts(raw: unknown): UpgradeCounts {
@@ -150,6 +182,8 @@ function fromRecord(d: Record<string, unknown>): SaveData {
     settings: { autoAbilities: settings.autoAbilities !== false, autoElement: settings.autoElement === true },
     heroClass: d.heroClass === 'warrior' || d.heroClass === 'mage' || d.heroClass === 'thief' ? d.heroClass : null,
     talents: sanitizeTalents(d.talents),
+    world: d.world === 'hell' && asRecord(d.offRun).hero ? 'hell' : 'dungeon',
+    offRun: sanitizeRun(d.offRun),
     lastSeen: typeof d.lastSeen === 'number' ? d.lastSeen : undefined,
   };
 }

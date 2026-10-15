@@ -1,5 +1,5 @@
 import type {
-  AbilityDef, AbilityId, BonusKey, PetDef, PetId, TalentDef, ClassDef, ClassId, Cooldowns, Element, Equipment, HeroState, Item, Meta, Monster, MonsterTrait,
+  AbilityDef, AbilityId, BonusKey, GemUpgradeDef, PetSlot, WorldId, PetDef, PetId, TalentDef, ClassDef, ClassId, Cooldowns, Element, Equipment, HeroState, Item, Meta, Monster, MonsterTrait,
   Quest, QuestKind, Rarity, RelicDef, RelicId, ShopUpgrade, SkillDef, SkillId, SkillLevels,
   UpgradeCounts, UpgradeKind,
 } from './types';
@@ -249,8 +249,17 @@ export const BIOMES: Biome[] = [
   { name: 'Ледяная бездна',      emoji: '🧊', wall: '#1d3350', wallDark: '#0a1626', floorTop: '#2e5278', floorBottom: '#091524', flameCore: '#f0fbff', flameEdge: '#38bdf8', light: '125,211,252', mist: 'rgba(125,211,252,0.18)', ambient: 'snow' },
   { name: 'Врата Пустоты',       emoji: '🌌', wall: '#2a1245', wallDark: '#0d0518', floorTop: '#3d1d63', floorBottom: '#0a0314', flameCore: '#fdf4ff', flameEdge: '#d946ef', light: '217,70,239',  mist: 'rgba(217,70,239,0.18)', ambient: 'void' },
 ];
-export const biomeForFloor = (floor: number): Biome =>
-  BIOMES[Math.floor((Math.max(1, floor) - 1) / 3) % BIOMES.length];
+export const HELL_BIOMES: Biome[] = [
+  { name: 'Врата Преисподней',  emoji: '🔥', wall: '#3a0d0d', wallDark: '#150404', floorTop: '#5a1a12', floorBottom: '#120302', flameCore: '#fff1b0', flameEdge: '#ff4d1a', light: '255,90,30',  mist: 'rgba(255,60,20,0.20)',  ambient: 'ember' },
+  { name: 'Кровавая река',      emoji: '🩸', wall: '#3d0a1f', wallDark: '#18030c', floorTop: '#661230', floorBottom: '#12030a', flameCore: '#ffd6e0', flameEdge: '#e11d48', light: '244,63,94',  mist: 'rgba(225,29,72,0.20)',  ambient: 'lava' },
+  { name: 'Пепельные равнины',  emoji: '🌑', wall: '#26201e', wallDark: '#0d0a09', floorTop: '#3b302b', floorBottom: '#0b0807', flameCore: '#ffe2b8', flameEdge: '#fb923c', light: '251,146,60', mist: 'rgba(160,140,130,0.20)', ambient: 'snow' },
+  { name: 'Тронный зал Дьявола', emoji: '👑', wall: '#2a0505', wallDark: '#0c0101', floorTop: '#4a0d0d', floorBottom: '#090000', flameCore: '#fff7d6', flameEdge: '#dc2626', light: '239,68,68',  mist: 'rgba(220,38,38,0.24)',  ambient: 'void' },
+];
+
+export const biomeForFloor = (floor: number, world: WorldId = 'dungeon'): Biome =>
+  world === 'hell'
+    ? HELL_BIOMES[Math.floor((Math.max(1, floor) - 1) / 5) % HELL_BIOMES.length]
+    : BIOMES[Math.floor((Math.max(1, floor) - 1) / 3) % BIOMES.length];
 
 // ════════════════════════════════════════════════════════════════
 //  5. МОНСТРЫ
@@ -321,17 +330,21 @@ export function baseMonsterStats(floor: number, stage: number, isBoss: boolean) 
  * Чем глубже этаж и стадия — тем сильнее; у босса характеристики умножены.
  * С 2-го этажа у монстров бывают особенности, с 3-го — встречаются элитные.
  */
-export function generateMonster(floor: number, stage: number): Monster {
+export function generateMonster(floor: number, stage: number, world: WorldId = 'dungeon'): Monster {
+  const hell = world === 'hell';
   const isBoss = stage === STAGES_PER_FLOOR;
-  const tier = Math.min(10, Math.max(1, Math.ceil(floor / 3)));
+  const tier = Math.min(hell ? 6 : 10, Math.max(1, Math.ceil(floor / (hell ? 4 : 3))));
   const isElite = !isBoss && floor >= ELITE.minFloor && Math.random() < ELITE.chance;
 
   let base: { name: string; emoji: string };
+  const pool = hell ? HELL_MONSTERS : MONSTER_POOL;
   if (isBoss) {
-    base = BOSSES[Math.min(BOSSES.length - 1, Math.floor((floor - 1) / 3))];
+    base = hell
+      ? HELL_BOSSES[Math.min(HELL_BOSSES.length - 1, Math.floor((floor - 1) / 4))]
+      : BOSSES[Math.min(BOSSES.length - 1, Math.floor((floor - 1) / 3))];
   } else {
     // обычные монстры — своего тира или тира ниже
-    base = pick(MONSTER_POOL.filter(m => m.tier <= tier && m.tier >= Math.max(1, tier - 1)));
+    base = pick(pool.filter(m => m.tier <= tier && m.tier >= Math.max(1, tier - 1)));
   }
 
   let trait: MonsterTrait | undefined;
@@ -344,7 +357,12 @@ export function generateMonster(floor: number, stage: number): Monster {
   }
 
   const b = baseMonsterStats(floor, stage, isBoss);
-  if (!isBoss && !isElite && floor >= GOBLIN.minFloor && Math.random() < GOBLIN.chance) {
+  if (hell) {
+    const k = HELL.monster;
+    b.hp = Math.round(b.hp * k.hp); b.atk = Math.round(b.atk * k.atk); b.def = Math.round(b.def * k.def);
+    b.gold = Math.round(b.gold * k.gold); b.xp = Math.round(b.xp * k.xp);
+  }
+  if (!hell && !isBoss && !isElite && floor >= GOBLIN.minFloor && Math.random() < GOBLIN.chance) {
     return {
       name: 'Гоблин-казначей', emoji: '👺', hp: Math.round(b.hp * GOBLIN.hp), atk: Math.round(b.atk * GOBLIN.atk),
       def: b.def, gold: Math.round(b.gold * GOBLIN.gold), xp: Math.round(b.xp * GOBLIN.xp),
@@ -362,7 +380,8 @@ export function generateMonster(floor: number, stage: number): Monster {
     def:  Math.round(b.def * e.def * armored),
     gold: Math.round(b.gold * e.gold),
     xp:   Math.round(b.xp * e.xp),
-    isBoss, isElite, tier, trait, element: pick(ELEMENT_LIST),
+    isBoss, isElite, tier, trait,
+    element: hell && Math.random() < 0.7 ? 'fire' : pick(ELEMENT_LIST),
   };
 }
 
@@ -425,7 +444,8 @@ let idCounter = 0;
  * Создаёт предмет. boosted — с боссов и из сундуков (редкие вещи чаще),
  * minRarity — «не хуже этой редкости» (для сундуков).
  */
-export function generateItem(floor: number, boosted: boolean, minRarity: Rarity = 'common'): Item {
+export function generateItem(floor: number, boosted: boolean, minRarity: Rarity = 'common', world: WorldId = 'dungeon'): Item {
+  const hell = world === 'hell';
   let roll = rollRarity(boosted);
   if (RARITY_ORDER.indexOf(roll.rarity) < RARITY_ORDER.indexOf(minRarity)) {
     roll = RARITY_ROLL.find(r => r.rarity === minRarity)!;
@@ -444,8 +464,8 @@ export function generateItem(floor: number, boosted: boolean, minRarity: Rarity 
     return {
       id, slot, rarity, ...affixes,
       price: Math.round(20 * bonus * (1 + floor * 0.5) * (1 + affixPrice)),
-      name: `${pick(WEAPON_NAMES)} +${plus}`,
-      emoji: pick(WEAPON_EMOJI),
+      name: `${pick(hell ? HELL_WEAPONS : WEAPON_NAMES)} +${plus}`,
+      emoji: hell ? pick(['🔱', '🪓', '🔥']) : pick(WEAPON_EMOJI),
       atk: Math.round(power * 5 + Math.random() * 3),
     };
   }
@@ -453,16 +473,16 @@ export function generateItem(floor: number, boosted: boolean, minRarity: Rarity 
     return {
       id, slot, rarity, ...affixes,
       price: Math.round(20 * bonus * (1 + floor * 0.5) * (1 + affixPrice)),
-      name: `${pick(ARMOR_NAMES)} +${plus}`,
-      emoji: '🛡️',
+      name: `${pick(hell ? HELL_ARMOR : ARMOR_NAMES)} +${plus}`,
+      emoji: hell ? '🦴' : '🛡️',
       def: Math.round(power * 3 + Math.random() * 2),
       hp: Math.round(power * 8 + Math.random() * 10),
     };
   }
   return {
     id, slot, rarity, ...affixes,
-    name: pick(AMULET_NAMES),
-    emoji: '📿',
+    name: pick(hell ? HELL_AMULETS : AMULET_NAMES),
+    emoji: hell ? '🧿' : '📿',
     atk: Math.round(power * 2),
     def: Math.round(power * 1.5),
     hp: Math.round(power * 10),
@@ -527,6 +547,7 @@ export function emptyMeta(): Meta {
     legendaries: 0, goldEarned: 0, abilitiesUsed: 0, achievements: [],
     kills: 0, relics: emptyRelics(), quests: [], questsDone: 0,
     daily: { last: '', streak: 0 }, goblins: 0,
+    gems: 0, gemUps: {}, petGear: { collar: null, armor: null, charm: null }, hellOpen: false, hellMax: 0,
     pets: emptyPets(), activePet: null, egg: -1,
   };
 }
@@ -784,3 +805,82 @@ export const petDef = (id: PetId): PetDef => PETS.find(p => p.id === id)!;
 
 export const petBonus = (pet: { id: PetId; level: number } | null, key: BonusKey): number =>
   pet ? (petDef(pet.id).per[key] ?? 0) * pet.level : 0;
+
+
+// ───────────────────────── Преисподняя: второй мир ─────────────────────────
+// У мира свой герой «Охотник на демонов», своя валюта (адские угли 🔥 лежат в hero.gold этого героя),
+// свои монстры, боссы, биомы, вещи и оформление. Прогресс мира не сбрасывается перерождением основного.
+
+export const WORLDS: Record<WorldId, { name: string; emoji: string; currency: string; coin: string; hero: string }> = {
+  dungeon: { name: 'Подземелье', emoji: '🏰', currency: 'Золото', coin: '💰', hero: 'Крушитель' },
+  hell:    { name: 'Преисподняя', emoji: '🔥', currency: 'Адские угли', coin: '🔥', hero: 'Охотник' },
+};
+
+export const HELL = {
+  openCost: 20,            // кристаллов за открытие портала
+  monster: { hp: 1.8, atk: 1.5, def: 1.4, gold: 2.2, xp: 2.0 },
+  gemBossChance: 0.10, gemEveryFloors: 5,
+  hero: { level: 1, xp: 0, xpToNext: 0, hp: 150, baseMaxHp: 150, baseAtk: 20, baseDef: 6, gold: 50, floor: 1, stage: 1, kills: 0 } as HeroState,
+};
+HELL.hero.xpToNext = xpForLevel(1);
+
+export const HELL_MONSTERS: { name: string; emoji: string; tier: number }[] = [
+  { name: 'Бес', emoji: '😈', tier: 1 }, { name: 'Огненный скорпион', emoji: '🦂', tier: 1 }, { name: 'Пепельный змей', emoji: '🐍', tier: 1 },
+  { name: 'Адская гончая', emoji: '🐕', tier: 2 }, { name: 'Кровокрыл', emoji: '🦇', tier: 2 }, { name: 'Падший', emoji: '🧟', tier: 2 },
+  { name: 'Лавовый голем', emoji: '🗿', tier: 3 }, { name: 'Рогатый палач', emoji: '👹', tier: 3 }, { name: 'Пожиратель душ', emoji: '👻', tier: 3 },
+  { name: 'Инкуб', emoji: '🧛', tier: 4 }, { name: 'Пылающий череп', emoji: '☠️', tier: 4 }, { name: 'Демон-кузнец', emoji: '⚒️', tier: 4 },
+  { name: 'Адский рыцарь', emoji: '🤺', tier: 5 }, { name: 'Цербер', emoji: '🐺', tier: 5 }, { name: 'Архидьявол', emoji: '👿', tier: 5 },
+  { name: 'Пожиратель миров', emoji: '🐲', tier: 6 }, { name: 'Владыка пепла', emoji: '🌋', tier: 6 },
+];
+export const HELL_BOSSES: { name: string; emoji: string }[] = [
+  { name: 'Князь бесов', emoji: '👺' }, { name: 'Королева суккубов', emoji: '💋' }, { name: 'Балрог', emoji: '🌋' },
+  { name: 'Дьявол', emoji: '👿' }, { name: 'Люцифер', emoji: '😈' },
+];
+const HELL_WEAPONS = ['Рогатый клинок', 'Коса палача', 'Адский молот', 'Коготь демона', 'Пылающая секира'];
+const HELL_ARMOR = ['Панцирь беса', 'Мантия пепла', 'Латы палача', 'Шкура гончей'];
+const HELL_AMULETS = ['Клык цербера', 'Сердце пламени', 'Печать преисподней', 'Глаз бездны'];
+
+// ───────────────────────── кристаллы бездны ─────────────────────────
+// Очень редкая валюта: с боссов (шанс) и за новый рекорд на каждом 10-м этаже (в Преисподней — на каждом 5-м). Покупки постоянные,
+// не сбрасываются перерождением и действуют в обоих мирах.
+
+export const GEM = { bossChance: 0.06, minBossFloor: 10, everyFloors: 10 };
+
+export const GEM_SHOP: GemUpgradeDef[] = [
+  { id: 'atk',   name: 'Руна ярости',      emoji: '⚔️', desc: '+20% к атаке',                        max: 5, baseCost: 3 },
+  { id: 'hp',    name: 'Руна стойкости',   emoji: '❤️', desc: '+20% к здоровью',                     max: 5, baseCost: 3 },
+  { id: 'gold',  name: 'Руна алчности',    emoji: '🪙', desc: '+25% к золоту и углям',               max: 5, baseCost: 2 },
+  { id: 'xp',    name: 'Руна мудрости',    emoji: '📖', desc: '+25% к опыту',                        max: 5, baseCost: 2 },
+  { id: 'souls', name: 'Печать душ',       emoji: '👻', desc: '+10% душ при перерождении',           max: 5, baseCost: 4 },
+  { id: 'luck',  name: 'Печать удачи',     emoji: '🍀', desc: '+10% к шансу реликвий и яиц',         max: 5, baseCost: 3 },
+  { id: 'heart', name: 'Сердце бездны',    emoji: '🫀', desc: '+15% к атаке и здоровью',             max: 3, baseCost: 8 },
+];
+export const gemUpgradeCost = (d: GemUpgradeDef, level: number): number => d.baseCost * (level + 1);
+export const gemLevel = (ups: Record<string, number>, id: string): number => ups[id] ?? 0;
+/** Общий множитель для процентного бонуса «Бездны». */
+export const gemPct = (ups: Record<string, number>, id: string, perLevel: number): number => gemLevel(ups, id) * perLevel;
+
+// ───────────────────────── снаряжение питомца ─────────────────────────
+// Три слота; вещь усиливает бонусы активного питомца. Ящики: за золото (дёшево, чаще обычное) и за кристаллы (лучше).
+
+export const PET_SLOTS: { id: PetSlot; name: string; emoji: string }[] = [
+  { id: 'collar', name: 'Ошейник', emoji: '🦴' },
+  { id: 'armor',  name: 'Броня',   emoji: '🛡️' },
+  { id: 'charm',  name: 'Амулет',  emoji: '🔔' },
+];
+export const PET_GEAR_MULT: Record<Rarity, number> = { common: 0.10, uncommon: 0.20, rare: 0.35, epic: 0.55, legendary: 0.80 };
+export const PET_CRATES: Record<'basic' | 'gem', { name: string; emoji: string; gemCost: number; weights: number[] }> = {
+  basic: { name: 'Ящик питомца', emoji: '📦', gemCost: 0, weights: [60, 25, 10, 4, 1] },
+  gem:   { name: 'Бездонный ящик', emoji: '🎁', gemCost: 3, weights: [0, 25, 40, 25, 10] },
+};
+export const petCrateGoldCost = (floor: number): number => Math.round(200 + floor * 80);
+export const petGearMult = (gear: Record<PetSlot, Rarity | null>): number =>
+  1 + PET_SLOTS.reduce((s, sl) => s + (gear[sl.id] ? PET_GEAR_MULT[gear[sl.id]!] : 0), 0);
+
+
+/** Какой облик у героя: в Преисподней — Охотник, иначе по классу. */
+export const heroVariant = (world: WorldId, cls: ClassId | null): 'warrior' | 'mage' | 'thief' | 'hell' =>
+  world === 'hell' ? 'hell' : cls ?? 'warrior';
+
+/** Имя героя на плашке. */
+export const heroName = (world: WorldId): string => WORLDS[world].hero;

@@ -166,6 +166,36 @@ export interface Meta {
   pets: Record<PetId, number>; // уровни питомцев (0 — ещё нет)
   activePet: PetId | null;     // питомец, который сейчас помогает
   egg: number;                 // убийств в инкубации яйца (-1 — яйца нет)
+  gems: number;                // кристаллы бездны — редкая валюта
+  gemUps: Record<string, number>; // купленные улучшения за кристаллы
+  petGear: Record<PetSlot, Rarity | null>; // снаряжение питомца
+  hellOpen: boolean;           // открыт ли портал в Преисподнюю
+  hellMax: number;             // рекорд этажа в Преисподней
+}
+
+/** Миры: основное подземелье и Преисподняя (у неё свой герой и своя валюта). */
+export type WorldId = 'dungeon' | 'hell';
+
+/** «Забег» мира: всё, что принадлежит герою конкретного мира. Второй мир хранится рядом и не теряется. */
+export interface RunSnapshot {
+  hero: HeroState;
+  skillLevels: SkillLevels;
+  equipped: Equipment;
+  inventory: Item[];
+  upgradeCounts: UpgradeCounts;
+  talents: Record<string, number>;
+  heroClass: ClassId | null;
+}
+
+export type PetSlot = 'collar' | 'armor' | 'charm';
+
+export interface GemUpgradeDef {
+  id: string;
+  name: string;
+  emoji: string;
+  desc: string;   // что даёт один уровень
+  max: number;
+  baseCost: number; // цена n-го уровня = baseCost × n
 }
 
 /** Питомцы: падают яйцами с боссов, помогают пассивными бонусами. */

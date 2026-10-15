@@ -2,6 +2,8 @@ import type { HeroState, Meta } from '../types';
 import { setGfxSetting, useGfx, type GfxSetting } from '../game/perf';
 import QuestsPanel from './QuestsPanel';
 import PetsPanel from './PetsPanel';
+import GemShopPanel from './GemShopPanel';
+import { useCoin, useWorld } from './coin';
 import { ACHIEVEMENTS, PERKS, PRESTIGE, soulsForFloor } from '../gameData';
 
 interface Props {
@@ -13,6 +15,8 @@ interface Props {
   onClaimDaily: () => void;
   onSetPet: (id: import('../types').PetId | null) => void;
   onReset: () => void;
+  onBuyGem: (id: string) => void;
+  onPetCrate: (kind: 'basic' | 'gem') => void;
   onToggleSound: () => void;
   onToggleAuto: () => void;
 }
@@ -20,11 +24,14 @@ interface Props {
 const GFX_LABEL: Record<GfxSetting, string> = { auto: 'Авто', high: 'Высокая', low: 'Низкая' };
 const NEXT_GFX: Record<GfxSetting, GfxSetting> = { auto: 'high', high: 'low', low: 'auto' };
 
-export default function MorePanel({ hero, meta, muted, autoAbilities, onRebirth, onClaimDaily, onSetPet, onReset, onToggleSound, onToggleAuto }: Props) {
+export default function MorePanel({ hero, meta, muted, autoAbilities, onRebirth, onClaimDaily, onSetPet, onReset, onBuyGem, onPetCrate, onToggleSound, onToggleAuto }: Props) {
   const gfx = useGfx();
+  const world = useWorld();
+  const coin = useCoin();
+  const inHell = world === 'hell';
   const gain = soulsForFloor(hero.floor, meta.rebirths);
   const nextPerk = PERKS.find(p => p.rebirths > meta.rebirths);
-  const canRebirth = gain > 0;
+  const canRebirth = gain > 0 && !inHell;
   const done = new Set(meta.achievements);
 
   return (
@@ -32,6 +39,7 @@ export default function MorePanel({ hero, meta, muted, autoAbilities, onRebirth,
       {/* ── перерождение ── */}
       <div className="rounded-xl p-3 bg-gradient-to-br from-purple-900/60 to-indigo-950/80 border border-purple-500/50 shadow-[0_0_24px_rgba(168,85,247,0.25)]">
         <h2 className="text-xl font-black text-purple-200 text-center text-stroke mb-1">👻 Перерождение</h2>
+        {inHell && <p className="text-xs text-orange-300 text-center mb-2 font-bold">🔥 Перерождение доступно только в Подземелье. Вернись через 🗺️ карту — прогресс Преисподней сохранится.</p>}
         <p className="text-xs text-purple-300/90 text-center mb-3 leading-snug">
           Начни путь заново и получи <b>души</b> — они навсегда усиливают героя.
           Сбрасываются этаж, золото, навыки и вещи.
@@ -48,13 +56,15 @@ export default function MorePanel({ hero, meta, muted, autoAbilities, onRebirth,
             : <div className="text-purple-400">Доступно с этажа {PRESTIGE.minFloor} (сейчас {hero.floor})</div>}
         </div>
         <button disabled={!canRebirth} onClick={onRebirth} className="btn-purple w-full py-3 rounded-xl font-black">
-          {canRebirth ? `👻 Переродиться (+${gain} душ)` : '🔒 Пока недоступно'}
+          {canRebirth ? `👻 Переродиться (+${gain} душ)` : inHell ? '🔒 Только в Подземелье' : '🔒 Пока недоступно'}
         </button>
       </div>
 
       <QuestsPanel meta={meta} onClaimDaily={onClaimDaily} />
 
-      <PetsPanel meta={meta} onSet={onSetPet} />
+      <GemShopPanel meta={meta} onBuy={onBuyGem} />
+
+      <PetsPanel meta={meta} gold={hero.gold} floor={hero.floor} coin={coin} canBuyWithGold onSet={onSetPet} onCrate={onPetCrate} />
 
       {/* ── путь перерождений ── */}
       <div className="panel rounded-xl p-3 border-purple-600/40">

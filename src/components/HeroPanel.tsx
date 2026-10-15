@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import type { ClassId, HeroState, HeroStats, HeroStatus } from '../types';
-import { classDef } from '../gameData';
+import { classDef, heroName } from '../gameData';
+import { useWorld } from './coin';
 import StatBar from './StatBar';
 
 interface Props {
@@ -12,10 +13,11 @@ interface Props {
 
 /** Плашка героя над сценой: уровень, здоровье, эффекты (яд, щит). */
 function HeroPanel({ hero, stats, status, heroClass }: Props) {
+  const world = useWorld();
   return (
     <div className="hud">
       <div className="hud-title">
-        <span className="hud-name">{heroClass ? classDef(heroClass).emoji : '🛡️'} Крушитель</span>
+        <span className="hud-name">{world === 'hell' ? '😈' : heroClass ? classDef(heroClass).emoji : '🛡️'} {heroName(world)}</span>
         <span className="hud-lvl">Ур. {hero.level}</span>
       </div>
       <StatBar
@@ -24,7 +26,7 @@ function HeroPanel({ hero, stats, status, heroClass }: Props) {
         label={`${hero.hp} / ${stats.maxHp}`}
       />
       <div className="hud-chips">
-        {heroClass && <span className="chip chip-gold">{classDef(heroClass).name}</span>}
+        {world === 'dungeon' && heroClass && <span className="chip chip-gold">{classDef(heroClass).name}</span>}
         {status.rageCharges > 0 && <span className="chip chip-red">😡 ×{status.rageCharges}</span>}
         {status.shieldCharges > 0 && <span className="chip chip-blue">🛡️ ×{status.shieldCharges}</span>}
         {status.poisonTurns > 0 && <span className="chip chip-green">🤢 яд ×{status.poisonTurns}</span>}

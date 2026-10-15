@@ -1,4 +1,5 @@
 import type { HeroState, HeroStats, Skill, SkillId } from '../types';
+import { useCoin } from './coin';
 import { PRESTIGE, skillCost } from '../gameData';
 
 const BASE_MAX = (s: Skill) => s.maxLevel; // уже с учётом перков
@@ -31,6 +32,7 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 }
 
 export default function SkillsPanel({ skills, gold, hero, stats, souls, onBuy }: Props) {
+  const coin = useCoin();
   return (
     <div className="space-y-3">
       <div className="panel rounded-xl p-3">
@@ -92,7 +94,7 @@ export default function SkillsPanel({ skills, gold, hero, stats, souls, onBuy }:
                 </div>
                 <button disabled={!canBuy} onClick={() => onBuy(s.id)}
                         className="btn-fantasy shrink-0 w-[84px] py-2 rounded-lg font-bold text-xs leading-tight">
-                  {maxed ? '🏆 МАКС' : <>Улучшить<br />💰 {cost}</>}
+                  {maxed ? '🏆 МАКС' : <>Улучшить<br />{coin} {cost}</>}
                 </button>
               </div>
             );
