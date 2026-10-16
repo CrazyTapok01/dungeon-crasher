@@ -636,7 +636,7 @@ export function fillQuests(meta: Meta): Meta {
 // Надетую вещь можно усилить за золото: +10% к атаке, защите и HP предмета за уровень.
 // Заточка остаётся на вещи (даже если её снять), при продаже повышает цену.
 
-export const ENHANCE = { max: 10, perLevel: 0.1, costBase: 2, costGrowth: 1.5, sellPerLevel: 0.3 };
+export const ENHANCE = { max: 10, perLevel: 0.1, costBase: 3, costGrowth: 1.6, floorShare: 0.8, floorGrowth: 1.5, sellPerLevel: 0.3 };
 
 /** Копия предмета с учётом заточки (для расчётов и показа). */
 export function enhanced(i: Item): Item {
@@ -647,8 +647,15 @@ export function enhanced(i: Item): Item {
   return { ...i, atk: sc(i.atk), def: sc(i.def), hp: sc(i.hp) };
 }
 
-export const enhanceCost = (i: Item): number =>
-  Math.round(i.price * ENHANCE.costBase * Math.pow(ENHANCE.costGrowth, i.plus ?? 0));
+/** Цена заточки: от стоимости вещи плюс доля «дохода» этажа (цена сундука растёт вместе с добычей), растёт с каждым уровнем. */
+export const enhanceCost = (i: Item, floor = 1): number => {
+  const p = i.plus ?? 0;
+  return Math.round(i.price * ENHANCE.costBase * Math.pow(ENHANCE.costGrowth, p)
+    + chestCost(floor) * ENHANCE.floorShare * Math.pow(ENHANCE.floorGrowth, p));
+};
+/** Шанс успеха заточки на следующий уровень (при неудаче золото сгорает, вещь остаётся, уровень не растёт). */
+export const ENHANCE_CHANCE = [0.95, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.35, 0.3, 0.25];
+export const enhanceChance = (plus: number): number => ENHANCE_CHANCE[Math.min(plus, ENHANCE_CHANCE.length - 1)];
 
 export const sellPrice = (i: Item): number =>
   Math.round(i.price * (1 + (i.plus ?? 0) * ENHANCE.sellPerLevel));

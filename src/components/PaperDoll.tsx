@@ -1,7 +1,8 @@
 import type { ClassId, Equipment, Item, ItemSlot } from '../types';
-import { ENHANCE, RARITY_COLORS, classDef, heroVariant, enhanceCost, enhanced } from '../gameData';
+import { ENHANCE, RARITY_COLORS, classDef, heroVariant, enhanceChance, enhanceCost, enhanced } from '../gameData';
 import HeroSprite from './HeroSprite';
-import { useWorld } from './coin';
+import { useFmt } from '../game/num';
+import { useFloor, useWorld } from './coin';
 
 interface Props {
   equipped: Equipment;
@@ -13,9 +14,9 @@ interface Props {
 const LABEL: Record<ItemSlot, string> = { weapon: 'Оружие', armor: 'Доспех', amulet: 'Амулет' };
 const EMPTY: Record<ItemSlot, string> = { weapon: '⚔️', armor: '🛡️', amulet: '📿' };
 
-function mainStats(i: Item): string {
+function mainStats(i: Item, f: (n: number) => string): string {
   const e = enhanced(i);
-  return [e.atk && `⚔️${e.atk}`, e.def && `🛡️${e.def}`, e.hp && `❤️${e.hp}`].filter(Boolean).join(' ');
+  return [e.atk && `⚔️${f(e.atk)}`, e.def && `🛡️${f(e.def)}`, e.hp && `❤️${f(e.hp)}`].filter(Boolean).join(' ');
 }
 
 function Tile({ slot, item, gold, onEnhance }: { slot: ItemSlot; item?: Item; gold: number; onEnhance: () => void }) {
@@ -30,16 +31,18 @@ function Tile({ slot, item, gold, onEnhance }: { slot: ItemSlot; item?: Item; go
   const c = RARITY_COLORS[item.rarity];
   const plus = item.plus ?? 0;
   const maxed = plus >= ENHANCE.max;
-  const cost = enhanceCost(item);
+  const f = useFmt();
+  const floor = useFloor();
+  const cost = enhanceCost(item, floor);
   return (
     <div className={`rounded-xl border ${c.border} bg-gradient-to-br ${c.bg} p-1.5 text-center shadow-md ${c.glow}`}>
       <div className="text-[10px] text-purple-300 leading-none">{LABEL[slot]}</div>
       <div className="text-2xl leading-tight">{item.emoji}</div>
       <div className={`text-[11px] font-bold ${c.text} leading-tight truncate`}>{item.name.replace(/\s*\+\d+$/, '')}{plus > 0 && <span className="text-amber-300"> +{plus}</span>}</div>
-      <div className="text-[10px] text-purple-100 leading-tight my-0.5">{mainStats(item)}</div>
+      <div className="text-[10px] text-purple-100 leading-tight my-0.5">{mainStats(item, f)}</div>
       {maxed
         ? <div className="text-[10px] font-bold text-amber-300">⚒️ макс.</div>
-        : <button onClick={onEnhance} disabled={gold < cost} className="btn-fantasy w-full rounded-md py-1 text-[10px] font-bold disabled:opacity-50">⚒️ +{plus + 1} · {cost}</button>}
+        : <button onClick={onEnhance} disabled={gold < cost} className="btn-fantasy w-full rounded-md py-1 text-[10px] font-bold disabled:opacity-50">⚒️ +{plus + 1} · {Math.round(enhanceChance(plus) * 100)}% · {f(cost)}</button>}
     </div>
   );
 }

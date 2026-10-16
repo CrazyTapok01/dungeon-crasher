@@ -203,6 +203,6 @@ export function playForEvent(e: GameEvent): void {
     case 'perk':
     case 'relic':
     case 'quest':        play('achievement'); break;
-    case 'ui':           play(e.kind === 'sell' ? 'coin' : 'buy'); break;
+    case 'ui':           play(e.kind === 'sell' ? 'coin' : e.kind === 'fail' ? 'click' : 'buy'); break;
   }
 }

@@ -1,3 +1,4 @@
+import { fmt } from '../game/num';
 import type { OfflineReport } from '../types';
 
 function formatDuration(sec: number): string {
@@ -17,7 +18,7 @@ export default function OfflineModal({ report, onClose }: { report: OfflineRepor
         <p className="text-sm text-purple-300 mb-3">Тебя не было {formatDuration(report.seconds)} — герой не сидел без дела:</p>
         <div className="space-y-1.5 mb-4 text-base">
           <div className="bg-black/40 rounded-lg py-1.5">☠️ Побеждено врагов: <b className="text-red-300">{report.kills}</b></div>
-          <div className="bg-black/40 rounded-lg py-1.5">💰 Золото: <b className="text-yellow-300">+{report.gold}</b></div>
+          <div className="bg-black/40 rounded-lg py-1.5">💰 Золото: <b className="text-yellow-300">+{fmt(report.gold)}</b></div>
           <div className="bg-black/40 rounded-lg py-1.5">⭐ Опыт: <b className="text-blue-300">+{report.xp}</b></div>
           {report.levels > 0 && <div className="bg-black/40 rounded-lg py-1.5">🎉 Новых уровней: <b className="text-green-300">+{report.levels}</b></div>}
         </div>

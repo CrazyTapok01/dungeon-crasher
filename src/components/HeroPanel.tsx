@@ -2,6 +2,7 @@ import { memo } from 'react';
 import type { ClassId, HeroState, HeroStats, HeroStatus } from '../types';
 import { classDef, heroName } from '../gameData';
 import { useWorld } from './coin';
+import { useFmt } from '../game/num';
 import StatBar from './StatBar';
 
 interface Props {
@@ -14,6 +15,7 @@ interface Props {
 /** Плашка героя над сценой: уровень, здоровье, эффекты (яд, щит). */
 function HeroPanel({ hero, stats, status, heroClass }: Props) {
   const world = useWorld();
+  const f = useFmt();
   return (
     <div className="hud">
       <div className="hud-title">
@@ -23,7 +25,7 @@ function HeroPanel({ hero, stats, status, heroClass }: Props) {
       <StatBar
         value={hero.hp} max={stats.maxHp} height={15}
         fill="linear-gradient(180deg,#f87171 0%,#dc2626 55%,#991b1b 100%)"
-        label={`${hero.hp} / ${stats.maxHp}`}
+        label={`${f(hero.hp)} / ${f(stats.maxHp)}`}
       />
       <div className="hud-chips">
         {world === 'dungeon' && heroClass && <span className="chip chip-gold">{classDef(heroClass).name}</span>}

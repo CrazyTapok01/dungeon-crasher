@@ -311,6 +311,6 @@ export type GameEventBody =
   | { type: 'perk'; key: string }
   | { type: 'relic'; key: string; level: number }
   | { type: 'quest'; text: string }
-  | { type: 'ui'; kind: 'buy' | 'equip' | 'sell' };
+  | { type: 'ui'; kind: 'buy' | 'equip' | 'sell' | 'fail' };
 
 export type GameEvent = GameEventBody & { id: number };

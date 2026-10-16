@@ -1,6 +1,7 @@
 import type { Item } from '../types';
-import { useCoin } from './coin';
-import { ENHANCE, RARITY_COLORS, RARITY_NAME, enhanceCost, enhanced, itemScore, sellPrice } from '../gameData';
+import { useFmt } from '../game/num';
+import { useCoin, useFloor } from './coin';
+import { ENHANCE, RARITY_COLORS, RARITY_NAME, enhanceChance, enhanceCost, enhanced, itemScore, sellPrice } from '../gameData';
 
 interface Props {
   item: Item;
@@ -14,10 +15,11 @@ interface Props {
 
 /** Строка бонусов предмета: «⚔️ 12 · 🛡️ 4 · ⚡ +3% крита …» */
 function Stats({ item }: { item: Item }) {
+  const f = useFmt();
   const parts: [string, string, string][] = [];
-  if (item.atk) parts.push(['⚔️', `${item.atk}`, 'text-red-300']);
-  if (item.def) parts.push(['🛡️', `${item.def}`, 'text-blue-300']);
-  if (item.hp) parts.push(['❤️', `${item.hp}`, 'text-green-300']);
+  if (item.atk) parts.push(['⚔️', f(item.atk), 'text-red-300']);
+  if (item.def) parts.push(['🛡️', f(item.def), 'text-blue-300']);
+  if (item.hp) parts.push(['❤️', f(item.hp), 'text-green-300']);
   if (item.crit) parts.push(['⚡', `+${item.crit}% крит`, 'text-yellow-300']);
   if (item.critdmg) parts.push(['💥', `+${item.critdmg}% крит.урон`, 'text-orange-300']);
   if (item.dodge) parts.push(['💨', `+${item.dodge}% уклон.`, 'text-sky-300']);
@@ -31,6 +33,8 @@ function Stats({ item }: { item: Item }) {
 
 export default function ItemCard({ item: raw, compareTo, equipped, onEquip, onSell, gold = 0, onEnhance }: Props) {
   const coin = useCoin();
+  const f = useFmt();
+  const floor = useFloor();
   const item = enhanced(raw);
   const plus = raw.plus ?? 0;
   const c = RARITY_COLORS[item.rarity];
@@ -53,15 +57,15 @@ export default function ItemCard({ item: raw, compareTo, equipped, onEquip, onSe
       {onEnhance && (
         plus >= ENHANCE.max
           ? <div className="mt-2 text-center text-[11px] font-bold text-amber-300">⚒️ Максимальная заточка</div>
-          : <button onClick={onEnhance} disabled={gold < enhanceCost(raw)}
+          : <button onClick={onEnhance} disabled={gold < enhanceCost(raw, floor)}
               className="btn-fantasy w-full mt-2 py-1.5 rounded-lg text-xs font-bold disabled:opacity-50">
-              ⚒️ Заточить +{plus + 1} · {coin} {enhanceCost(raw)}
+              ⚒️ Заточить +{plus + 1} · {Math.round(enhanceChance(plus) * 100)}% · {coin} {f(enhanceCost(raw, floor))}
             </button>
       )}
       {(onEquip || onSell) && (
         <div className="mt-2 flex gap-1.5">
           {onEquip && <button onClick={onEquip} className="btn-fantasy flex-1 py-1.5 rounded-lg text-xs font-bold">Надеть</button>}
-          {onSell && <button onClick={onSell} className="btn-fantasy flex-1 py-1.5 rounded-lg text-xs font-bold">{coin} {sellPrice(raw)}</button>}
+          {onSell && <button onClick={onSell} className="btn-fantasy flex-1 py-1.5 rounded-lg text-xs font-bold">{coin} {f(sellPrice(raw))}</button>}
         </div>
       )}
     </div>

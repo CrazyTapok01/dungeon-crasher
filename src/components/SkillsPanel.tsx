@@ -1,4 +1,5 @@
 import type { HeroState, HeroStats, Skill, SkillId } from '../types';
+import { useFmt } from '../game/num';
 import { useCoin } from './coin';
 import { PRESTIGE, skillCost } from '../gameData';
 
@@ -33,14 +34,15 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 
 export default function SkillsPanel({ skills, gold, hero, stats, souls, onBuy }: Props) {
   const coin = useCoin();
+  const f = useFmt();
   return (
     <div className="space-y-3">
       <div className="panel rounded-xl p-3">
         <h2 className="text-xl font-black text-amber-300 mb-2 text-center text-stroke">🛡️ Герой</h2>
         <div className="grid grid-cols-2 gap-x-4">
-          <Stat label="⚔️ Атака" value={stats.atk} />
-          <Stat label="🛡️ Защита" value={stats.def} />
-          <Stat label="❤️ Макс. HP" value={stats.maxHp} />
+          <Stat label="⚔️ Атака" value={f(stats.atk)} />
+          <Stat label="🛡️ Защита" value={f(stats.def)} />
+          <Stat label="❤️ Макс. HP" value={f(stats.maxHp)} />
           <Stat label="🌿 Регенерация" value={`${stats.regen}/ход`} />
           <Stat label="⚡ Шанс крита" value={`${stats.critChance}%`} />
           <Stat label="💥 Крит. урон" value={`${stats.critDmg}%`} />
@@ -49,7 +51,7 @@ export default function SkillsPanel({ skills, gold, hero, stats, souls, onBuy }:
           <Stat label="🪙 Бонус золота" value={`+${stats.goldBonus}%`} />
           <Stat label="📖 Бонус опыта" value={`+${stats.xpBonus}%`} />
           <Stat label="⭐ Уровень" value={hero.level} />
-          <Stat label="☠️ Убийств" value={hero.kills} />
+          <Stat label="☠️ Убийств" value={f(hero.kills)} />
         </div>
         {souls > 0 && (
           <div className="mt-2 text-center text-xs text-purple-300 bg-purple-950/50 border border-purple-700/50 rounded-lg py-1.5">
@@ -94,7 +96,7 @@ export default function SkillsPanel({ skills, gold, hero, stats, souls, onBuy }:
                 </div>
                 <button disabled={!canBuy} onClick={() => onBuy(s.id)}
                         className="btn-fantasy shrink-0 w-[84px] py-2 rounded-lg font-bold text-xs leading-tight">
-                  {maxed ? '🏆 МАКС' : <>Улучшить<br />{coin} {cost}</>}
+                  {maxed ? '🏆 МАКС' : <>Улучшить<br />{coin} {f(cost)}</>}
                 </button>
               </div>
             );

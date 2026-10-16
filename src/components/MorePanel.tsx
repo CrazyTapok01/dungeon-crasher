@@ -2,6 +2,8 @@ import type { HeroState, Meta } from '../types';
 import { setGfxSetting, useGfx, type GfxSetting } from '../game/perf';
 import QuestsPanel from './QuestsPanel';
 import PetsPanel from './PetsPanel';
+import { setNumMode, useFmt } from '../game/num';
+import { getNumMode } from '../game/num';
 import GemShopPanel from './GemShopPanel';
 import { useCoin, useWorld } from './coin';
 import { ACHIEVEMENTS, PERKS, PRESTIGE, soulsForFloor } from '../gameData';
@@ -26,6 +28,8 @@ const NEXT_GFX: Record<GfxSetting, GfxSetting> = { auto: 'high', high: 'low', lo
 
 export default function MorePanel({ hero, meta, muted, autoAbilities, onRebirth, onClaimDaily, onSetPet, onReset, onBuyGem, onPetCrate, onToggleSound, onToggleAuto }: Props) {
   const gfx = useGfx();
+  useFmt();
+  const numMode = getNumMode();
   const world = useWorld();
   const coin = useCoin();
   const inHell = world === 'hell';
@@ -116,6 +120,12 @@ export default function MorePanel({ hero, meta, muted, autoAbilities, onRebirth,
           className="btn-fantasy w-full mt-2 py-2.5 rounded-lg text-sm font-bold"
         >
           🎨 Графика: {GFX_LABEL[gfx.setting]}{gfx.setting === 'auto' ? ` (сейчас: ${gfx.low ? 'низкая' : 'высокая'})` : ''}
+        </button>
+        <button
+          onClick={() => setNumMode(numMode === 'full' ? 'short' : 'full')}
+          className="btn-fantasy w-full mt-2 py-2.5 rounded-lg text-sm font-bold"
+        >
+          🔢 Числа: {numMode === 'full' ? 'полные' : 'сокращённые (от 1E+9)'}
         </button>
         <p className="text-[11px] text-purple-300/70 text-center mt-1 leading-tight">
           Если игра тормозит — выберите «Низкая»: меньше эффектов, заметно легче для телефона.

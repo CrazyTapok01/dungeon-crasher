@@ -1,3 +1,4 @@
+import { fmt } from '../game/num';
 import { useEffect, useRef, useState } from 'react';
 import type { GameEvent, HeroStats } from '../types';
 import type { GameState } from '../game/reducer';
@@ -150,7 +151,7 @@ export default function BattleScene({ state, stats }: Props) {
             { transform: 'translateX(0) rotate(0)', filter: 'brightness(1)' },
           ], 340, hitDelay);
           burst(e.heavy ? 'strike' : e.crit ? 'crit' : 'hit', 'monster', hitDelay);
-          later(() => addFloat('monster', e.crit ? `${e.dmg}!` : `${e.dmg}`, e.heavy ? 'f-heavy' : e.crit ? 'f-crit' : 'f-dmg'), hitDelay - 100);
+          later(() => addFloat('monster', e.crit ? `${fmt(e.dmg)}!` : fmt(e.dmg), e.heavy ? 'f-heavy' : e.crit ? 'f-crit' : 'f-dmg'), hitDelay - 100);
           if (e.heavy) { later(() => shake(9, 320), hitDelay); flash('#ffffff', 0.45); }
           else if (e.crit) later(() => shake(5, 260), hitDelay);
           break;
@@ -177,7 +178,7 @@ export default function BattleScene({ state, stats }: Props) {
               { transform: 'translateX(0) rotate(0)', filter: 'brightness(1)' },
             ], 340, 130);
             burst(e.blocked ? 'block' : 'hurt', 'hero', 130);
-            addFloat('hero', e.blocked ? `🛡️${e.dmg}` : `-${e.dmg}`, e.heavy ? 'f-heavy-hurt' : 'f-hurt');
+            addFloat('hero', e.blocked ? `🛡️${fmt(e.dmg)}` : `-${fmt(e.dmg)}`, e.heavy ? 'f-heavy-hurt' : 'f-hurt');
             later(() => shake(e.heavy ? 11 : 4, e.heavy ? 380 : 220), 130);
             if (e.heavy) flash('#ef4444', 0.4, 380);
           }
@@ -228,7 +229,7 @@ export default function BattleScene({ state, stats }: Props) {
           later(() => setGhosts(list => list.filter(x => x.id !== g.id)), 800);
           burst('smoke', 'monster');
           burst('coins', 'monster', 0, { big: e.boss || e.elite });
-          addFloat('monster', `+${e.gold} 💰`, 'f-gold', -34);
+          addFloat('monster', `+${fmt(e.gold)} ${state.world === 'hell' ? '🔥' : '💰'}`, 'f-gold', -34);
           break;
         }
         case 'level_up':

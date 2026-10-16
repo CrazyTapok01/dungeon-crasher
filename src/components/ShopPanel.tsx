@@ -14,16 +14,18 @@ interface Props {
   onBuyChest: () => void;
 }
 
+import { useFmt } from '../game/num';
 import { useCoin } from './coin';
 export default function ShopPanel({ gold, floor, inventoryCount, upgradeCounts, chestResult, rebirths, onBuyPotion, onBuyUpgrade, onBuyChest }: Props) {
   const coin = useCoin();
+  const f = useFmt();
   const chest = chestCost(floor);
   const bagFull = inventoryCount >= inventoryLimit(rebirths);
   const minRarity = chestMinRarity(rebirths) === 'rare' ? 'редкой' : 'необычной';
   return (
     <div className="panel rounded-xl p-3">
       <h2 className="text-xl font-black text-amber-300 mb-1 text-center text-stroke">🏪 Лавка торговца</h2>
-      <p className="text-center text-yellow-300 mb-4 text-sm">{coin} Кошелёк: {gold}</p>
+      <p className="text-center text-yellow-300 mb-4 text-sm">{coin} Кошелёк: {f(gold)}</p>
 
       <h3 className="text-sm font-bold text-purple-300 mb-1.5">🎁 Сундук сокровищ</h3>
       <div className="rounded-xl p-3 bg-gradient-to-br from-amber-900/40 to-purple-950/50 border border-amber-600/50 mb-4">
@@ -35,7 +37,7 @@ export default function ShopPanel({ gold, floor, inventoryCount, upgradeCounts, 
           </div>
         </div>
         <button disabled={gold < chest || bagFull} onClick={onBuyChest} className="btn-fantasy w-full py-2 rounded-lg font-bold text-sm">
-          {bagFull ? 'Сумка полна' : `Открыть · ${coin} ${chest}`}
+          {bagFull ? 'Сумка полна' : `Открыть · ${coin} ${f(chest)}`}
         </button>
         {chestResult && (
           <div className="mt-3 pop-in">
@@ -53,7 +55,7 @@ export default function ShopPanel({ gold, floor, inventoryCount, upgradeCounts, 
           <div className="text-xs text-green-300/80">+{SHOP_POTION.heal} HP</div>
         </div>
         <button disabled={gold < SHOP_POTION.cost} onClick={onBuyPotion} className="btn-fantasy py-2 px-3 rounded-lg font-bold text-xs">
-          {coin} {SHOP_POTION.cost}
+          {coin} {f(SHOP_POTION.cost)}
         </button>
       </div>
 
@@ -70,7 +72,7 @@ export default function ShopPanel({ gold, floor, inventoryCount, upgradeCounts, 
                 <div className="text-xs text-amber-300/80">+{upgradeAmount(u, rebirths)} {u.label}</div>
               </div>
               <button disabled={gold < cost} onClick={() => onBuyUpgrade(u.kind)} className="btn-fantasy py-2 px-3 rounded-lg font-bold text-xs">
-                {coin} {cost}
+                {coin} {f(cost)}
               </button>
             </div>
           );

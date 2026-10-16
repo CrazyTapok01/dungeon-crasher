@@ -17,7 +17,8 @@ import ElementBar from './components/ElementBar';
 import TalentsPanel from './components/TalentsPanel';
 import CraftPanel from './components/CraftPanel';
 import WorldMap from './components/WorldMap';
-import { CoinContext, WorldContext } from './components/coin';
+import { fmt, useFmt } from './game/num';
+import { CoinContext, FloorContext, WorldContext } from './components/coin';
 
 type Tab = 'combat' | 'hero' | 'inventory' | 'craft' | 'shop' | 'more';
 
@@ -35,6 +36,7 @@ const TABS: { id: Tab; icon: string; label: string }[] = [
  * (правила: game/reducer.ts, данные и баланс: gameData.ts).
  */
 export default function App() {
+  useFmt();
   const game = useGame();
   const { state, stats } = game;
   const { hero } = state;
@@ -90,6 +92,7 @@ export default function App() {
   return (
     <CoinContext.Provider value={WORLDS[state.world].coin}>
     <WorldContext.Provider value={state.world}>
+    <FloorContext.Provider value={hero.floor}>
     <div className="h-full flex flex-col max-w-xl mx-auto" style={{ paddingTop: 'var(--sat)', paddingLeft: 'var(--sal)', paddingRight: 'var(--sar)' }}>
       {!started && <SplashScreen onStart={start} />}
 
@@ -99,7 +102,7 @@ export default function App() {
           <div className="flex items-center gap-x-3 gap-y-0.5 flex-wrap min-w-0">
             <span className="text-yellow-400 font-black">{WORLDS[state.world].emoji} Этаж {hero.floor}</span>
             <span className="text-purple-300 text-xs">{hero.stage}/10</span>
-            <span className="text-yellow-300 font-bold">{WORLDS[state.world].coin} {hero.gold}</span>
+            <span className="text-yellow-300 font-bold">{WORLDS[state.world].coin} {fmt(hero.gold)}</span>
             {state.meta.gems > 0 && <span className="text-cyan-300 text-xs font-bold">💎 {state.meta.gems}</span>}
             {state.meta.souls > 0 && <span className="text-purple-300 text-xs">👻 {state.meta.souls}</span>}
           </div>
@@ -116,7 +119,7 @@ export default function App() {
           <div className="flex-1 h-1.5 bg-black/60 rounded-full overflow-hidden border border-blue-900/70">
             <div className="h-full w-full transition-transform duration-300" style={{ transform: `translateX(${Math.min(100, (hero.xp / hero.xpToNext) * 100) - 100}%)`, background: 'linear-gradient(90deg,#2563eb,#60a5fa)' }} />
           </div>
-          <span className="text-[10px] text-blue-300/80 shrink-0">{hero.xp}/{hero.xpToNext}</span>
+          <span className="text-[10px] text-blue-300/80 shrink-0">{fmt(hero.xp)}/{fmt(hero.xpToNext)}</span>
         </div>
       </header>
 
@@ -218,6 +221,7 @@ export default function App() {
         />
       )}
     </div>
+    </FloorContext.Provider>
     </WorldContext.Provider>
     </CoinContext.Provider>
   );

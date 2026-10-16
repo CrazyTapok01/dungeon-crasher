@@ -9,7 +9,7 @@ import {
   SHIELD, SHOP_POTION, SHOP_UPGRADES, SKILLS, STAGES_PER_FLOOR, STRIKE, SWIFT_DODGE, THORNS_FRAC,
   TRAITS, abilityDef, abilityUnlocked, baseMonsterStats, biomeForFloor, chestCost, chestMinRarity,
   deathGoldKept, emptyCooldowns, emptyMeta, emptySkillLevels, emptyUpgradeCounts, generateItem,
-  generateMonster, GEM, GEM_SHOP, HELL, PET_CRATES, PET_GEAR_MULT, PET_SLOTS, WORLDS, gemLevel, gemUpgradeCost, petCrateGoldCost, petGearMult, EGG, PET_MAX, PETS, TALENTS, TALENT_MAX, petDef, spentTalents, talentBonus, talentPoints, CLASSES, CLASS_BONUS, CRAFT_RECIPES, counterOf, craftItem, craftGroups, ENHANCE, dailyPreview, enhanceCost, sellPrice, todayKey, inventoryLimit, RELICS, RELIC_DROP, RELIC_MAX, QUEST_INFO, fillQuests, questProgress, itemScore, junkItems, skillCost, skillMaxLevel, skillUnlocked,
+  generateMonster, GEM, GEM_SHOP, HELL, PET_CRATES, PET_GEAR_MULT, PET_SLOTS, WORLDS, gemLevel, gemUpgradeCost, petCrateGoldCost, petGearMult, EGG, PET_MAX, PETS, TALENTS, TALENT_MAX, petDef, spentTalents, talentBonus, talentPoints, CLASSES, CLASS_BONUS, CRAFT_RECIPES, counterOf, craftItem, craftGroups, ENHANCE, dailyPreview, enhanceCost, enhanceChance, sellPrice, todayKey, inventoryLimit, RELICS, RELIC_DROP, RELIC_MAX, QUEST_INFO, fillQuests, questProgress, itemScore, junkItems, skillCost, skillMaxLevel, skillUnlocked,
   soulsForFloor, upgradeAmount, upgradeCost,
 } from '../gameData';
 import { computeStats, type Extras } from './stats';
@@ -860,8 +860,13 @@ function reduce(state: GameState, action: Action): GameState {
     case 'ENHANCE': {
       const item = state.equipped[action.slot];
       if (!item || (item.plus ?? 0) >= ENHANCE.max) return state;
-      const cost = enhanceCost(item);
+      const cost = enhanceCost(item, state.hero.floor);
       if (state.hero.gold < cost) return state;
+      if (Math.random() >= enhanceChance(item.plus ?? 0)) {
+        const f = withGold({ ...fresh }, -cost);
+        const txt = `💥 Заточка не удалась! ${item.name.replace(/\s*\+\d+$/, '')} остался +${item.plus ?? 0}`;
+        return emit(emit(withLog(f, `${txt} (потеряно ${cost})`, 'loot'), { type: 'ui', kind: 'fail' }), { type: 'quest', text: txt });
+      }
       const upgraded: Item = { ...item, plus: (item.plus ?? 0) + 1 };
       const s = withGold({ ...fresh, equipped: { ...state.equipped, [action.slot]: upgraded } }, -cost);
       return emit(withLog(s, `⚒️ ${item.name} заточен до +${upgraded.plus}!`, 'loot'), { type: 'ui', kind: 'buy' });

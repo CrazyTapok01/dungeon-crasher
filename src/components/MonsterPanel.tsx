@@ -1,3 +1,4 @@
+import { useFmt } from '../game/num';
 import { memo } from 'react';
 import type { Monster, MonsterAi } from '../types';
 import { ELEMENTS, TRAITS } from '../gameData';
@@ -11,6 +12,7 @@ interface Props {
 
 /** Плашка монстра над сценой: имя, здоровье, особенности и состояние. */
 function MonsterPanel({ monster, hp, ai }: Props) {
+  const f = useFmt();
   const trait = monster.trait ? TRAITS[monster.trait] : null;
   const fill = monster.isBoss
     ? 'linear-gradient(180deg,#fde047 0%,#f59e0b 55%,#b45309 100%)'
@@ -26,7 +28,7 @@ function MonsterPanel({ monster, hp, ai }: Props) {
           <span className={`ml-1 ${ELEMENTS[monster.element].color}`} title={ELEMENTS[monster.element].name}>{ELEMENTS[monster.element].emoji}</span>
         </span>
       </div>
-      <StatBar value={hp} max={monster.hp} height={15} fill={fill} label={`${hp} / ${monster.hp}`} />
+      <StatBar value={hp} max={monster.hp} height={15} fill={fill} label={`${f(hp)} / ${f(monster.hp)}`} />
       <div className="hud-chips justify-end">
         {ai.charging && <span className="chip chip-red chip-pulse">⚠️ замах!</span>}
         {ai.enraged && <span className="chip chip-red">😡 ярость</span>}

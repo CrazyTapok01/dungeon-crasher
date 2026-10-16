@@ -7,3 +7,6 @@ export const useCoin = () => useContext(CoinContext);
 /** Текущий мир (для оформления дочерних панелей). */
 export const WorldContext = createContext<WorldId>('dungeon');
 export const useWorld = () => useContext(WorldContext);
+/** Текущий этаж (нужен для цены заточки). */
+export const FloorContext = createContext(1);
+export const useFloor = () => useContext(FloorContext);
