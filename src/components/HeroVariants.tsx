@@ -9,15 +9,15 @@ import type { Equipment, Rarity } from '../types';
 const GLOW: Record<Rarity | 'none', [string, string]> = {
   none: ['#e9d5ff', '#a855f7'], common: ['#e5e7eb', '#9ca3af'],
   uncommon: ['#d9f99d', '#22c55e'], rare: ['#bfdbfe', '#3b82f6'],
-  epic: ['#f0abfc', '#9333ea'], legendary: ['#fef9c3', '#f59e0b'],
+  epic: ['#f0abfc', '#9333ea'], legendary: ['#fef9c3', '#f59e0b'], divine: ['#ecfeff', '#22d3ee'],
 };
 const ROBE: Record<Rarity | 'none', [string, string]> = {
   none: ['#6d28d9', '#2e1065'], common: ['#6d28d9', '#2e1065'],
   uncommon: ['#15803d', '#052e16'], rare: ['#1d4ed8', '#172554'],
-  epic: ['#a21caf', '#4a044e'], legendary: ['#d97706', '#451a03'],
+  epic: ['#a21caf', '#4a044e'], legendary: ['#d97706', '#451a03'], divine: ['#0891b2', '#083344'],
 };
 const AURA: Record<Rarity, string> = {
-  common: '#cbd5e1', uncommon: '#4ade80', rare: '#60a5fa', epic: '#c084fc', legendary: '#fcd34d',
+  common: '#cbd5e1', uncommon: '#4ade80', rare: '#60a5fa', epic: '#c084fc', legendary: '#fcd34d', divine: '#67e8f9',
 };
 
 interface P { equipped: Equipment; swingKey: number; heavy: boolean; dead: boolean; }
@@ -145,7 +145,7 @@ export function HellSprite({ equipped, swingKey, heavy, dead }: P) {
   const [b1] = GLOW[equipped.weapon?.rarity ?? 'none'];
   const amulet = equipped.amulet?.rarity;
   const rare = equipped.armor?.rarity;
-  const plate = rare === 'legendary' ? '#fbbf24' : rare === 'epic' ? '#f0abfc' : rare === 'rare' ? '#93c5fd' : '#f87171';
+  const plate = rare === 'divine' ? '#67e8f9' : rare === 'legendary' ? '#fbbf24' : rare === 'epic' ? '#f0abfc' : rare === 'rare' ? '#93c5fd' : '#f87171';
   return (
     <svg viewBox="0 0 140 170" className={`hero-svg hero-hell ${dead ? 'hero-dead' : ''}`} aria-label="Охотник на демонов">
       <defs>

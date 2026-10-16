@@ -11,15 +11,15 @@ import { HellSprite, MageSprite, ThiefSprite } from './HeroVariants';
 const BLADE: Record<Rarity | 'none', [string, string]> = {
   none: ['#e5e7eb', '#9ca3af'], common: ['#e5e7eb', '#9ca3af'],
   uncommon: ['#d9f99d', '#22c55e'], rare: ['#bfdbfe', '#3b82f6'],
-  epic: ['#f0abfc', '#9333ea'], legendary: ['#fef9c3', '#f59e0b'],
+  epic: ['#f0abfc', '#9333ea'], legendary: ['#fef9c3', '#f59e0b'], divine: ['#ecfeff', '#22d3ee'],
 };
 const CAPE: Record<Rarity | 'none', [string, string]> = {
   none: ['#b91c1c', '#450a0a'], common: ['#b91c1c', '#450a0a'],
   uncommon: ['#16a34a', '#052e16'], rare: ['#2563eb', '#172554'],
-  epic: ['#9333ea', '#3b0764'], legendary: ['#d97706', '#451a03'],
+  epic: ['#9333ea', '#3b0764'], legendary: ['#d97706', '#451a03'], divine: ['#0891b2', '#083344'],
 };
 const AURA: Record<Rarity, string> = {
-  common: '#cbd5e1', uncommon: '#4ade80', rare: '#60a5fa', epic: '#c084fc', legendary: '#fcd34d',
+  common: '#cbd5e1', uncommon: '#4ade80', rare: '#60a5fa', epic: '#c084fc', legendary: '#fcd34d', divine: '#67e8f9',
 };
 
 interface Props {
@@ -39,7 +39,7 @@ function HeroSprite({ equipped, swingKey, heavy, dead, variant = 'warrior' }: Pr
   const amulet = equipped.amulet?.rarity;
   const [b1, b2] = BLADE[weapon];
   const [c1, c2] = CAPE[armor];
-  const legendaryBlade = weapon === 'legendary' || weapon === 'epic';
+  const legendaryBlade = weapon === 'legendary' || weapon === 'epic' || weapon === 'divine';
 
   return (
     <svg viewBox="0 0 140 170" className={`hero-svg ${dead ? 'hero-dead' : ''}`} aria-label="Герой">

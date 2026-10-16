@@ -1,8 +1,8 @@
 import type {
-  ClassId, Equipment, HeroState, Item, ItemSlot, Meta, QuestKind, Rarity, RunSnapshot, WorldId, Settings, SkillLevels, UpgradeCounts,
+  ClassId, Equipment, PetId, HeroState, Item, ItemSlot, Meta, QuestKind, Rarity, RunSnapshot, WorldId, Settings, SkillLevels, UpgradeCounts,
 } from '../types';
 import {
-  ACHIEVEMENTS, INITIAL_HERO, MAX_PERK_LEVELS, QUEST_INFO, RARITY_NAME, RELICS, RELIC_MAX, SKILLS,
+  ACHIEVEMENTS, INITIAL_HERO, QUEST_INFO, RARITY_NAME, RELICS, RELIC_MAX, SKILLS, HELL_PACTS, SOUL_SHOP,
   STAGES_PER_FLOOR, GEM_SHOP, PETS, PET_MAX, TALENTS, emptyPets, emptyMeta, emptyRelics, emptySkillLevels, fillQuests,
 } from '../gameData';
 
@@ -66,7 +66,7 @@ function sanitizeLevels(raw: unknown): SkillLevels {
   const levels = emptySkillLevels();
   for (const def of SKILLS) {
     const v = found.get(def.id);
-    if (typeof v === 'number') levels[def.id] = clamp(Math.floor(v), 0, def.maxLevel + MAX_PERK_LEVELS);
+    if (typeof v === 'number') levels[def.id] = clamp(Math.floor(v), 0, def.noPerkLevels ? def.maxLevel : 1e6);
   }
   return levels;
 }
@@ -119,6 +119,8 @@ function sanitizeMeta(raw: unknown, hero: HeroState): Meta {
     questsDone: num(r.questsDone),
     goblins: num(r.goblins),
     gems: num(r.gems), hellMax: num(r.hellMax), hellOpen: r.hellOpen === true,
+    petRank: sanitizePetNums(r.petRank, 1, 3, 1), petReborn: sanitizePetNums(r.petReborn, 0, 1e15, 0),
+    soulUps: sanitizeSoulUps(r.soulUps), soulsSpent: num(r.soulsSpent), altar: num(r.altar), pacts: sanitizePacts(r.pacts),
     gemUps: sanitizeGemUps(r.gemUps), petGear: sanitizePetGear(r.petGear),
     pets, activePet: ap ? ap.id : null, egg: typeof r.egg === 'number' ? clamp(Math.floor(r.egg), -1, 999) : -1,
     daily: {
@@ -127,6 +129,25 @@ function sanitizeMeta(raw: unknown, hero: HeroState): Meta {
     },
   };
   return fillQuests(meta);
+}
+
+function sanitizePetNums(raw: unknown, lo: number, hi: number, dflt: number): Record<PetId, number> {
+  const r = asRecord(raw);
+  const out = emptyPets();
+  for (const p of PETS) out[p.id] = typeof r[p.id] === 'number' ? clamp(Math.floor(r[p.id] as number), lo, hi) : dflt;
+  return out;
+}
+function sanitizeSoulUps(raw: unknown): Record<string, number> {
+  const r = asRecord(raw);
+  const out: Record<string, number> = {};
+  for (const d of SOUL_SHOP) { const v = clamp(Math.floor(num(r[d.id])), 0, d.max); if (v > 0) out[d.id] = v; }
+  return out;
+}
+function sanitizePacts(raw: unknown): Record<string, boolean> {
+  const r = asRecord(raw);
+  const out: Record<string, boolean> = {};
+  for (const p of HELL_PACTS) if (r[p.id] === true) out[p.id] = true;
+  return out;
 }
 
 function sanitizeGemUps(raw: unknown): Record<string, number> {
@@ -179,7 +200,8 @@ function fromRecord(d: Record<string, unknown>): SaveData {
     inventory: Array.isArray(d.inventory) ? d.inventory.filter(isItem) : [],
     meta: sanitizeMeta(d.meta, hero),
     upgradeCounts: sanitizeCounts(d.upgradeCounts),
-    settings: { autoAbilities: settings.autoAbilities !== false, autoElement: settings.autoElement === true },
+    settings: { autoAbilities: settings.autoAbilities !== false, autoElement: settings.autoElement === true,
+      autoSell: Array.isArray(settings.autoSell) ? settings.autoSell.filter((r): r is Rarity => typeof r === 'string' && r in RARITY_NAME && r !== 'divine') : [] },
     heroClass: d.heroClass === 'warrior' || d.heroClass === 'mage' || d.heroClass === 'thief' ? d.heroClass : null,
     talents: sanitizeTalents(d.talents),
     world: d.world === 'hell' && asRecord(d.offRun).hero ? 'hell' : 'dungeon',

@@ -9,7 +9,7 @@ import {
   SHIELD, SHOP_POTION, SHOP_UPGRADES, SKILLS, STAGES_PER_FLOOR, STRIKE, SWIFT_DODGE, THORNS_FRAC,
   TRAITS, abilityDef, abilityUnlocked, baseMonsterStats, biomeForFloor, chestCost, chestMinRarity,
   deathGoldKept, emptyCooldowns, emptyMeta, emptySkillLevels, emptyUpgradeCounts, generateItem,
-  generateMonster, GEM, GEM_SHOP, HELL, PET_CRATES, PET_GEAR_MULT, PET_SLOTS, WORLDS, gemLevel, gemUpgradeCost, petCrateGoldCost, petGearMult, EGG, PET_MAX, PETS, TALENTS, TALENT_MAX, petDef, spentTalents, talentBonus, talentPoints, CLASSES, CLASS_BONUS, CRAFT_RECIPES, counterOf, craftItem, craftGroups, ENHANCE, dailyPreview, enhanceCost, enhanceChance, sellPrice, todayKey, inventoryLimit, RELICS, RELIC_DROP, RELIC_MAX, QUEST_INFO, fillQuests, questProgress, itemScore, junkItems, skillCost, skillMaxLevel, skillUnlocked,
+  generateMonster, PET_REBIRTH, petAvailable, petRankOf, HELL_PACTS, SOUL_SHOP, altarCost, altarSouls, craftGoldCost, soulUpLevel, soulUpgradeCost, soulsAvailable, GEM, GEM_SHOP, HELL, PET_CRATES, PET_GEAR_MULT, PET_SLOTS, WORLDS, gemLevel, gemUpgradeCost, petCrateGoldCost, petGearMult, EGG, PET_MAX, PETS, TALENTS, TALENT_MAX, petDef, spentTalents, talentBonus, talentPoints, CLASSES, CLASS_BONUS, CRAFT_RECIPES, counterOf, craftItem, craftGroups, ENHANCE, dailyPreview, enhanceCost, enhanceChance, sellPrice, todayKey, inventoryLimit, RELICS, RELIC_DROP, RELIC_MAX, QUEST_INFO, fillQuests, questProgress, itemScore, junkItems, skillCost, skillMaxLevel, skillUnlocked,
   soulsForFloor, upgradeAmount, upgradeCost,
 } from '../gameData';
 import { computeStats, type Extras } from './stats';
@@ -80,6 +80,11 @@ export type Action =
   | { type: 'SET_PET'; id: PetId | null }
   | { type: 'TRAVEL'; to: WorldId }
   | { type: 'OPEN_HELL' }
+  | { type: 'BUY_SOUL'; id: string }
+  | { type: 'TOGGLE_PACT'; id: string }
+  | { type: 'ALTAR' }
+  | { type: 'PET_REBIRTH'; id: PetId }
+  | { type: 'SET_AUTO_SELL'; rarity: Rarity }
   | { type: 'BUY_GEM'; id: string }
   | { type: 'PET_CRATE'; kind: 'basic' | 'gem' }
   | { type: 'SET_ELEMENT'; element: Element }
@@ -105,7 +110,10 @@ export const extrasOf = (s: Pick<GameState, 'heroClass' | 'talents' | 'meta' | '
   talents: s.talents,
   petMult: petGearMult(s.meta.petGear),
   gemUps: s.meta.gemUps,
-  pet: s.meta.activePet && s.meta.pets[s.meta.activePet] > 0 ? { id: s.meta.activePet, level: s.meta.pets[s.meta.activePet] } : null,
+  soulUps: s.meta.soulUps,
+  pacts: s.world === 'hell' ? s.meta.pacts : {},
+  pet: s.meta.activePet && s.meta.pets[s.meta.activePet] > 0 && petAvailable(s.meta, s.meta.activePet)
+    ? { id: s.meta.activePet, level: s.meta.pets[s.meta.activePet] * petRankOf(s.meta, s.meta.activePet) } : null,
 });
 
 const statsOf = (s: GameState): HeroStats =>
@@ -197,7 +205,7 @@ function createState(save: SaveData | null): GameState {
     inventory: save?.inventory ?? [],
     meta: fillQuests(world === 'dungeon' ? { ...meta, maxFloor: Math.max(meta.maxFloor, hero.floor) } : meta),
     upgradeCounts: save?.upgradeCounts ?? emptyUpgradeCounts(),
-    settings: save?.settings ?? { autoAbilities: true, autoElement: false },
+    settings: save?.settings ?? { autoAbilities: true, autoElement: false, autoSell: [] },
     heroClass: save?.heroClass ?? null,
     talents: save?.talents ?? {},
     world: save?.world ?? 'dungeon',
@@ -236,7 +244,7 @@ export const loadInitialState = (): GameState => createState(loadGame());
 
 /** Стартовый герой после перерождения: чуть больше золота за каждую душу. */
 function startHero(meta: Meta): HeroState {
-  return { ...INITIAL_HERO, hp: 99999, gold: INITIAL_HERO.gold + meta.souls * PRESTIGE.startGoldPerSoul };
+  return { ...INITIAL_HERO, hp: 99999, gold: INITIAL_HERO.gold + meta.souls * PRESTIGE.startGoldPerSoul + soulUpLevel(meta.soulUps, 'start') * 250 };
 }
 
 // ───────────────────────── офлайн-прогресс ─────────────────────────
@@ -630,8 +638,13 @@ function checkQuests(s: GameState): GameState {
 /** Кладёт предмет в сумку; если сумка полна — сразу продаёт. */
 function dropItem(s: GameState, item: Item): GameState {
   const label = `${item.emoji} ${item.name} (${RARITY_NAME[item.rarity]})`;
-  const meta = item.rarity === 'legendary' ? { ...s.meta, legendaries: s.meta.legendaries + 1 } : s.meta;
+  const meta = item.rarity === 'legendary' || item.rarity === 'divine' ? { ...s.meta, legendaries: s.meta.legendaries + 1 } : s.meta;
   s = emit({ ...s, meta }, { type: 'loot', rarity: item.rarity });
+  // авто-продажа: выбранное качество и не лучше надетого в этом слоте
+  const worn = s.equipped[item.slot];
+  if (s.settings.autoSell.includes(item.rarity) && worn && itemScore(item) <= itemScore(worn)) {
+    return withLog(withGold(s, item.price), `🗑️ Авто-продажа: ${label} за ${item.price}`, 'loot');
+  }
   if (s.inventory.length >= inventoryLimit(s.meta.rebirths)) {
     return withLog(withGold(s, item.price), `🎒 Сумка полна — ${label} продан за ${item.price} золота`, 'loot');
   }
@@ -714,7 +727,7 @@ function reduce(state: GameState, action: Action): GameState {
       if (!def || !skillUnlocked(def, state.meta.rebirths)) return state;
       const level = state.skillLevels[def.id];
       const cost = skillCost(def, level);
-      if (level >= skillMaxLevel(def, state.meta.rebirths) || state.hero.gold < cost) return state;
+      if (level >= skillMaxLevel(def, state.meta.rebirths, state.world) || state.hero.gold < cost) return state;
       return clampHp(emit({
         ...withGold(fresh, -cost),
         skillLevels: { ...state.skillLevels, [def.id]: level + 1 },
@@ -769,12 +782,74 @@ function reduce(state: GameState, action: Action): GameState {
     case 'CRAFT': {
       const rec = CRAFT_RECIPES.find(r => r.from === action.from);
       const group = craftGroups(state.inventory).find(g => g.slot === action.slot && g.from === action.from);
-      if (!rec || !group || group.pair.length < 2) return state;
-      const [a, b] = group.pair;
-      const result = craftItem(a, b, rec.to);
-      const ids = new Set([a.id, b.id]);
-      const s = { ...fresh, inventory: [result, ...state.inventory.filter(i => !ids.has(i.id))] };
-      return emit(withLog(s, `🔨 Создано: ${result.name} (${RARITY_NAME[rec.to]})`, 'loot'), { type: 'loot', rarity: rec.to });
+      if (!rec || !group || group.take.length < rec.need) return state;
+      const cost = craftGoldCost(rec, state.hero.floor);
+      if (state.hero.gold < cost) return state;
+      const mats = group.take;
+      const ids = new Set(mats.map(m => m.id));
+      const paid = withGold({ ...fresh }, -cost);
+      if (Math.random() >= rec.chance) {
+        // неудача: остаётся лучшая из материалов, остальные сгорают
+        const keep = mats[mats.length - 1];
+        const lost = new Set(mats.filter(m => m.id !== keep.id).map(m => m.id));
+        const txt = `🔥 Крафт сорвался: сгорело ${lost.size}, «${keep.name}» уцелел`;
+        const s = { ...paid, inventory: state.inventory.filter(i => !lost.has(i.id)) };
+        return emit(emit(withLog(s, txt, 'loot'), { type: 'ui', kind: 'fail' }), { type: 'quest', text: txt });
+      }
+      const result = craftItem(mats, rec.to);
+      const s = { ...paid, inventory: [result, ...state.inventory.filter(i => !ids.has(i.id))] };
+      const done = emit(withLog(s, `🔨 Создано: ${result.name} (${RARITY_NAME[rec.to]})`, 'loot'), { type: 'loot', rarity: rec.to });
+      return rec.to === 'legendary' || rec.to === 'divine' ? emit(done, { type: 'quest', text: `🔨 ${RARITY_NAME[rec.to]}: ${result.name}!` }) : done;
+    }
+
+    case 'PET_REBIRTH': {
+      const id = action.id;
+      const rank = petRankOf(state.meta, id);
+      const cost = PET_REBIRTH.gemCost(rank);
+      if (state.meta.pets[id] < PET_MAX || rank >= PET_REBIRTH.maxRank || !petAvailable(state.meta, id) || state.meta.gems < cost) return state;
+      const meta = {
+        ...state.meta, gems: state.meta.gems - cost,
+        pets: { ...state.meta.pets, [id]: 1 },
+        petRank: { ...state.meta.petRank, [id]: rank + 1 },
+        petReborn: { ...state.meta.petReborn, [id]: Date.now() + PET_REBIRTH.hours * 3600 * 1000 },
+      };
+      const txt = `🔄 ${petDef(id).name} переродился: ранг ${rank + 1}, вернётся через ${PET_REBIRTH.hours} ч`;
+      return emit(withLog({ ...fresh, meta }, txt, 'boss'), { type: 'quest', text: txt });
+    }
+
+    case 'SET_AUTO_SELL': {
+      if (action.rarity === 'divine') return state;
+      const cur = state.settings.autoSell;
+      const autoSell = cur.includes(action.rarity) ? cur.filter(r => r !== action.rarity) : [...cur, action.rarity];
+      return { ...fresh, settings: { ...state.settings, autoSell } };
+    }
+
+    case 'BUY_SOUL': {
+      const d = SOUL_SHOP.find(x => x.id === action.id);
+      if (!d) return state;
+      const lvl = soulUpLevel(state.meta.soulUps, d.id);
+      const cost = soulUpgradeCost(d, lvl);
+      if (lvl >= d.max || soulsAvailable(state.meta) < cost) return state;
+      const meta = { ...state.meta, soulsSpent: state.meta.soulsSpent + cost, soulUps: { ...state.meta.soulUps, [d.id]: lvl + 1 } };
+      const s = clampHp({ ...fresh, meta });
+      return emit(withLog(s, `${d.emoji} ${d.name} → ур. ${lvl + 1}`, 'ability'), { type: 'ui', kind: 'buy' });
+    }
+
+    case 'TOGGLE_PACT': {
+      if (state.world !== 'hell' || !HELL_PACTS.some(p => p.id === action.id)) return state;
+      const meta = { ...state.meta, pacts: { ...state.meta.pacts, [action.id]: !state.meta.pacts[action.id] } };
+      const s = clampHp({ ...fresh, meta });
+      return emit(withLog(s, `${HELL_PACTS.find(p => p.id === action.id)!.emoji} Договор ${meta.pacts[action.id] ? 'заключён' : 'расторгнут'}`, 'ability'), { type: 'ui', kind: 'equip' });
+    }
+
+    case 'ALTAR': {
+      if (state.world !== 'hell') return state;
+      const cost = altarCost(state.meta.altar, state.hero.floor);
+      if (state.hero.gold < cost) return state;
+      const gain = altarSouls(state.hero.floor);
+      const s = withGold({ ...fresh, meta: { ...state.meta, souls: state.meta.souls + gain, altar: state.meta.altar + 1 } }, -cost);
+      const txt = `🕯️ Жертва принята: +${gain} 👻`;
+      return emit(withLog(s, txt, 'boss'), { type: 'quest', text: txt });
     }
 
     case 'BUY_TALENT': {
@@ -828,7 +903,7 @@ function reduce(state: GameState, action: Action): GameState {
       const crate = PET_CRATES[action.kind];
       const goldCost = action.kind === 'basic' ? petCrateGoldCost(state.hero.floor) : 0;
       if (state.meta.gems < crate.gemCost || state.hero.gold < goldCost) return state;
-      const order: Rarity[] = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
+      const order: Rarity[] = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'divine'];
       const total = crate.weights.reduce((a, b) => a + b, 0);
       let roll = Math.random() * total;
       let ri = 0;
@@ -852,7 +927,7 @@ function reduce(state: GameState, action: Action): GameState {
     }
 
     case 'SET_PET': {
-      if (action.id !== null && state.meta.pets[action.id] <= 0) return state;
+      if (action.id !== null && (state.meta.pets[action.id] <= 0 || !petAvailable(state.meta, action.id))) return state;
       const s = { ...fresh, meta: { ...state.meta, activePet: action.id } };
       return action.id ? emit(withLog(s, `${petDef(action.id).emoji} ${petDef(action.id).name} теперь с тобой`), { type: 'ui', kind: 'equip' }) : s;
     }

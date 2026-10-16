@@ -5,6 +5,8 @@ import PetsPanel from './PetsPanel';
 import { setNumMode, useFmt } from '../game/num';
 import { getNumMode } from '../game/num';
 import GemShopPanel from './GemShopPanel';
+import SoulShopPanel from './SoulShopPanel';
+import HellPanel from './HellPanel';
 import { useCoin, useWorld } from './coin';
 import { ACHIEVEMENTS, PERKS, PRESTIGE, soulsForFloor } from '../gameData';
 
@@ -16,8 +18,12 @@ interface Props {
   onRebirth: () => void;
   onClaimDaily: () => void;
   onSetPet: (id: import('../types').PetId | null) => void;
+  onPetRebirth: (id: import('../types').PetId) => void;
   onReset: () => void;
   onBuyGem: (id: string) => void;
+  onBuySoul: (id: string) => void;
+  onPact: (id: string) => void;
+  onAltar: () => void;
   onPetCrate: (kind: 'basic' | 'gem') => void;
   onToggleSound: () => void;
   onToggleAuto: () => void;
@@ -26,7 +32,7 @@ interface Props {
 const GFX_LABEL: Record<GfxSetting, string> = { auto: 'Авто', high: 'Высокая', low: 'Низкая' };
 const NEXT_GFX: Record<GfxSetting, GfxSetting> = { auto: 'high', high: 'low', low: 'auto' };
 
-export default function MorePanel({ hero, meta, muted, autoAbilities, onRebirth, onClaimDaily, onSetPet, onReset, onBuyGem, onPetCrate, onToggleSound, onToggleAuto }: Props) {
+export default function MorePanel({ hero, meta, muted, autoAbilities, onRebirth, onClaimDaily, onSetPet, onPetRebirth, onReset, onBuyGem, onBuySoul, onPact, onAltar, onPetCrate, onToggleSound, onToggleAuto }: Props) {
   const gfx = useGfx();
   useFmt();
   const numMode = getNumMode();
@@ -66,9 +72,13 @@ export default function MorePanel({ hero, meta, muted, autoAbilities, onRebirth,
 
       <QuestsPanel meta={meta} onClaimDaily={onClaimDaily} />
 
+      <SoulShopPanel meta={meta} onBuy={onBuySoul} />
+
+      {meta.hellOpen && <HellPanel meta={meta} world={world} coals={hero.gold} floor={hero.floor} onPact={onPact} onAltar={onAltar} />}
+
       <GemShopPanel meta={meta} onBuy={onBuyGem} />
 
-      <PetsPanel meta={meta} gold={hero.gold} floor={hero.floor} coin={coin} canBuyWithGold onSet={onSetPet} onCrate={onPetCrate} />
+      <PetsPanel onRebirth={onPetRebirth} meta={meta} gold={hero.gold} floor={hero.floor} coin={coin} canBuyWithGold onSet={onSetPet} onCrate={onPetCrate} />
 
       {/* ── путь перерождений ── */}
       <div className="panel rounded-xl p-3 border-purple-600/40">

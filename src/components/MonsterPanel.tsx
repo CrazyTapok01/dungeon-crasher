@@ -1,7 +1,7 @@
 import { useFmt } from '../game/num';
 import { memo } from 'react';
 import type { Monster, MonsterAi } from '../types';
-import { ELEMENTS, TRAITS } from '../gameData';
+import { ELEMENTS, HELL_AFFIXES, TRAITS } from '../gameData';
 import StatBar from './StatBar';
 
 interface Props {
@@ -33,6 +33,7 @@ function MonsterPanel({ monster, hp, ai }: Props) {
         {ai.charging && <span className="chip chip-red chip-pulse">⚠️ замах!</span>}
         {ai.enraged && <span className="chip chip-red">😡 ярость</span>}
         {trait && <span className="chip chip-purple" title={trait.desc}>{trait.emoji} {trait.name}</span>}
+        {monster.affix && (() => { const a = HELL_AFFIXES.find(x => x.id === monster.affix); return a ? <span className="chip chip-red" title={a.desc}>{a.emoji} {a.name}</span> : null; })()}
         {monster.isElite && <span className="chip chip-gold">элита</span>}
       </div>
     </div>

@@ -1,7 +1,7 @@
 import type { HeroState, HeroStats, Skill, SkillId } from '../types';
 import { useFmt } from '../game/num';
 import { useCoin } from './coin';
-import { PRESTIGE, skillCost } from '../gameData';
+import { PRESTIGE, UNLIMITED, skillCost } from '../gameData';
 
 const BASE_MAX = (s: Skill) => s.maxLevel; // уже с учётом перков
 
@@ -86,11 +86,11 @@ export default function SkillsPanel({ skills, gold, hero, stats, souls, onBuy }:
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
                     <h4 className="font-black text-white text-sm truncate">{s.name}</h4>
-                    <span className="text-[11px] bg-black/40 px-2 py-0.5 rounded-full text-amber-300 font-bold shrink-0">{s.level}/{s.maxLevel}</span>
+                    <span className="text-[11px] bg-black/40 px-2 py-0.5 rounded-full text-amber-300 font-bold shrink-0">{s.level}/{s.maxLevel >= UNLIMITED ? '∞' : s.maxLevel}</span>
                   </div>
                   <p className="text-[11px] text-purple-200/80 leading-tight">{s.desc}</p>
                   <div className="h-1.5 bg-black/50 rounded-full mt-1 overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-amber-500 to-yellow-300" style={{ width: `${(s.level / s.maxLevel) * 100}%` }} />
+                    <div className="h-full bg-gradient-to-r from-amber-500 to-yellow-300" style={{ width: `${s.maxLevel >= UNLIMITED ? (s.level % 50) * 2 : (s.level / s.maxLevel) * 100}%` }} />
                   </div>
                   <p className="text-xs text-green-300 mt-0.5 font-bold">▸ {s.effect(s.level)}</p>
                 </div>

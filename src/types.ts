@@ -1,6 +1,6 @@
 // Здесь только типы — никакого рабочего кода.
 
-export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
+export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary' | 'divine';
 export type ItemSlot = 'weapon' | 'armor' | 'amulet';
 
 export interface Item {
@@ -54,6 +54,7 @@ export interface Monster {
   tier: number;
   trait?: MonsterTrait;
   element: Element;  // стихия врага: у каждой есть слабость
+  affix?: string;   // аффикс этажа Преисподней (id)
   goblin?: boolean; // гоблин-казначей: мало HP, много золота
 }
 
@@ -171,6 +172,12 @@ export interface Meta {
   petGear: Record<PetSlot, Rarity | null>; // снаряжение питомца
   hellOpen: boolean;           // открыт ли портал в Преисподнюю
   hellMax: number;             // рекорд этажа в Преисподней
+  soulUps: Record<string, number>; // улучшения из лавки душ
+  soulsSpent: number;          // потрачено душ в лавке (бонус душ считается от всех заработанных)
+  pacts: Record<string, boolean>;  // включённые договоры Преисподней
+  altar: number;               // сколько раз приносили жертву на алтаре
+  petRank: Record<PetId, number>;   // ранг питомца: после перерождения бонусы умножаются на ранг
+  petReborn: Record<PetId, number>; // когда питомец вернётся из перерождения (мс), 0 — не перерождается
 }
 
 /** Миры: основное подземелье и Преисподняя (у неё свой герой и своя валюта). */
@@ -248,6 +255,7 @@ export interface Quest {
 export interface Settings {
   autoAbilities: boolean; // способности применяются сами
   autoElement: boolean;   // герой сам выбирает выигрышную стихию
+  autoSell: Rarity[];     // качества, которые продаются сразу при выпадении (если не лучше надетого)
 }
 
 export type UpgradeKind = 'atk' | 'def' | 'hp';

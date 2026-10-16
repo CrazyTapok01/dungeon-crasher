@@ -1,5 +1,5 @@
-import type { ClassId, Equipment, Item, ItemSlot } from '../types';
-import { RARITY_ORDER, itemScore, junkItems } from '../gameData';
+import type { ClassId, Equipment, Item, ItemSlot, Rarity } from '../types';
+import { RARITY_COLORS, RARITY_NAME, RARITY_ORDER, itemScore, junkItems } from '../gameData';
 import ItemCard from './ItemCard';
 import PaperDoll from './PaperDoll';
 
@@ -14,6 +14,8 @@ interface Props {
   gold: number;
   onEnhance: (slot: ItemSlot) => void;
   heroClass: ClassId | null;
+  autoSell: Rarity[];
+  onAutoSell: (r: Rarity) => void;
 }
 
 const SLOTS: { key: ItemSlot; label: string; emoji: string }[] = [
@@ -22,7 +24,7 @@ const SLOTS: { key: ItemSlot; label: string; emoji: string }[] = [
   { key: 'amulet', label: 'Амулет', emoji: '📿' },
 ];
 
-export default function InventoryPanel({ inventory, limit, equipped, onEquip, onSell, onEquipBest, onSellJunk, gold, onEnhance, heroClass }: Props) {
+export default function InventoryPanel({ inventory, limit, equipped, onEquip, onSell, onEquipBest, onSellJunk, gold, onEnhance, heroClass, autoSell, onAutoSell }: Props) {
   // лучшие и редкие — сверху
   const sorted = [...inventory].sort((a, b) =>
     RARITY_ORDER.indexOf(b.rarity) - RARITY_ORDER.indexOf(a.rarity) || itemScore(b) - itemScore(a));
@@ -47,6 +49,24 @@ export default function InventoryPanel({ inventory, limit, equipped, onEquip, on
         <button onClick={onSellJunk} disabled={junk.length === 0} className="btn-fantasy py-2 rounded-lg text-xs font-bold">
           🧹 Продать хлам{junk.length > 0 ? ` (${junk.length} · +${junkGold})` : ''}
         </button>
+      </div>
+
+      <div className="rounded-lg bg-black/30 border border-purple-800/50 p-2 mb-3">
+        <div className="text-xs font-bold text-purple-200 text-center mb-1.5">🗑️ Авто-продажа при выпадении</div>
+        <div className="flex flex-wrap justify-center gap-1.5">
+          {RARITY_ORDER.filter(r => r !== 'divine').map(r => {
+            const on = autoSell.includes(r);
+            return (
+              <button key={r} onClick={() => onAutoSell(r)}
+                className={`px-2 py-1 rounded-md text-[11px] font-bold border ${on ? `${RARITY_COLORS[r].border} bg-black/60 ${RARITY_COLORS[r].text}` : 'border-purple-900/60 text-purple-400/70'}`}>
+                {on ? '✓ ' : ''}{RARITY_NAME[r]}
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-[10px] text-purple-300/70 text-center mt-1 leading-tight">
+          Выбранные качества продаются сразу, если вещь не лучше надетой в этом слоте. Божественные никогда не продаются.
+        </p>
       </div>
 
       {inventory.length === 0 ? (

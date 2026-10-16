@@ -195,7 +195,7 @@ export function playForEvent(e: GameEvent): void {
     case 'enrage':       play('enrage'); break;
     case 'monster_killed': play('coin'); break;
     case 'level_up':     play('levelup'); break;
-    case 'loot':         play(e.rarity === 'epic' || e.rarity === 'legendary' ? 'lootRare' : 'loot'); break;
+    case 'loot':         play(e.rarity === 'epic' || e.rarity === 'legendary' || e.rarity === 'divine' ? 'lootRare' : 'loot'); break;
     case 'floor_cleared': play('floor'); break;
     case 'hero_died':    play('death'); break;
     case 'rebirth':      play('rebirth'); break;

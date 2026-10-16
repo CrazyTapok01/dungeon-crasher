@@ -19,17 +19,17 @@ export function useGame() {
   const stats = useMemo(
     () => computeStats(state.hero, state.skillLevels, state.equipped, state.meta.souls, extrasOf(state)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state.hero, state.skillLevels, state.equipped, state.meta.souls, state.meta.relics, state.heroClass, state.talents, state.meta.activePet, state.meta.pets],
+    [state.hero, state.skillLevels, state.equipped, state.meta.souls, state.meta.relics, state.heroClass, state.talents, state.meta.activePet, state.meta.pets, state.meta.petRank, state.meta.petReborn],
   );
 
   const skills = useMemo<Skill[]>(
     () => SKILLS.map(def => ({
       ...def,
-      maxLevel: skillMaxLevel(def, state.meta.rebirths),
+      maxLevel: skillMaxLevel(def, state.meta.rebirths, state.world),
       level: state.skillLevels[def.id],
       locked: !skillUnlocked(def, state.meta.rebirths),
     })),
-    [state.skillLevels, state.meta.rebirths],
+    [state.skillLevels, state.meta.rebirths, state.world],
   );
 
   // Бой: раз в COMBAT_TICK_MS ходит то герой, то монстр.
@@ -112,6 +112,11 @@ export function useGame() {
     sellItem: (item: Item) => dispatch({ type: 'SELL', itemId: item.id }),
     equipBest: () => dispatch({ type: 'EQUIP_BEST' }),
     sellJunk: () => dispatch({ type: 'SELL_JUNK' }),
+    petRebirth: (id: PetId) => dispatch({ type: 'PET_REBIRTH', id }),
+    setAutoSell: (rarity: Rarity) => dispatch({ type: 'SET_AUTO_SELL', rarity }),
+    buySoul: (id: string) => dispatch({ type: 'BUY_SOUL', id }),
+    togglePact: (id: string) => dispatch({ type: 'TOGGLE_PACT', id }),
+    altar: () => dispatch({ type: 'ALTAR' }),
     enhance: (slot: ItemSlot) => dispatch({ type: 'ENHANCE', slot }),
     buyTalent: (id: string) => dispatch({ type: 'BUY_TALENT', id }),
     setPet: (id: PetId | null) => dispatch({ type: 'SET_PET', id }),

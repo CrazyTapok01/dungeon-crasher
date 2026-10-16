@@ -2,7 +2,7 @@ import { fmt } from '../game/num';
 import { useEffect, useRef, useState } from 'react';
 import type { GameEvent, HeroStats } from '../types';
 import type { GameState } from '../game/reducer';
-import { RARITY_COLORS, biomeForFloor, heroVariant, petDef } from '../gameData';
+import { RARITY_COLORS, biomeForFloor, heroVariant, petDef, petAvailable } from '../gameData';
 import { useGfx } from '../game/perf';
 import ParticleLayer, { type ParticleHandle } from './ParticleLayer';
 import HeroSprite from './HeroSprite';
@@ -43,7 +43,7 @@ function Torch({ side }: { side: 'left' | 'right' }) {
 }
 
 export default function BattleScene({ state, stats }: Props) {
-  const pet = state.meta.activePet && state.meta.pets[state.meta.activePet] > 0 ? petDef(state.meta.activePet).emoji : null;
+  const pet = state.meta.activePet && state.meta.pets[state.meta.activePet] > 0 && petAvailable(state.meta, state.meta.activePet) ? petDef(state.meta.activePet).emoji : null;
   const { hero, monster, monsterHp, monsterAi, heroStatus, equipped, isDead, events, showFloorBanner } = state;
   const biome = biomeForFloor(hero.floor, state.world);
   const variant = heroVariant(state.world, state.heroClass);
@@ -239,9 +239,10 @@ export default function BattleScene({ state, stats }: Props) {
           break;
         case 'loot': {
           const hex = RARITY_COLORS[e.rarity].hex;
-          const big = e.rarity === 'epic' || e.rarity === 'legendary';
+          const big = e.rarity === 'epic' || e.rarity === 'legendary' || e.rarity === 'divine';
           burst('loot', 'monster', 200, { color: hex, big });
           if (e.rarity === 'legendary') flash('#fcd34d', 0.3, 700);
+          if (e.rarity === 'divine') flash('#67e8f9', 0.45, 1000);
           break;
         }
         case 'hero_died':

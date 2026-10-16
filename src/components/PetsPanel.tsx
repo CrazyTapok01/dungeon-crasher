@@ -1,12 +1,15 @@
 import { memo } from 'react';
 import type { Meta, PetId } from '../types';
-import { EGG, PETS, PET_CRATES, PET_GEAR_MULT, PET_MAX, PET_SLOTS, RARITY_COLORS, RARITY_NAME, petCrateGoldCost, petGearMult } from '../gameData';
+import { useNow } from './useNow';
+import { EGG, PETS, PET_REBIRTH, petAvailable, petRankOf, PET_CRATES, PET_GEAR_MULT, PET_MAX, PET_SLOTS, RARITY_COLORS, RARITY_NAME, petCrateGoldCost, petGearMult } from '../gameData';
 
 /** Питомцы: яйцо с босса, вылупление за победы, один активный помощник. */
-interface Props { meta: Meta; gold: number; floor: number; coin: string; canBuyWithGold: boolean; onSet: (id: PetId | null) => void; onCrate: (kind: 'basic' | 'gem') => void }
+interface Props { onRebirth: (id: PetId) => void; meta: Meta; gold: number; floor: number; coin: string; canBuyWithGold: boolean; onSet: (id: PetId | null) => void; onCrate: (kind: 'basic' | 'gem') => void }
 
-function PetsPanel({ meta, gold, floor, coin, canBuyWithGold, onSet, onCrate }: Props) {
+function PetsPanel({ onRebirth, meta, gold, floor, coin, canBuyWithGold, onSet, onCrate }: Props) {
   const goldCost = petCrateGoldCost(floor);
+  const waiting = PETS.some(p => !petAvailable(meta, p.id));
+  const now = useNow(waiting);
   const owned = PETS.filter(p => meta.pets[p.id] > 0).length;
   const incubating = meta.egg >= 0;
   const pct = incubating ? Math.round((meta.egg / EGG.kills) * 100) : 0;
@@ -56,15 +59,28 @@ function PetsPanel({ meta, gold, floor, coin, canBuyWithGold, onSet, onCrate }: 
       <div className="space-y-1.5">
         {PETS.map(p => {
           const lvl = meta.pets[p.id];
-          const active = meta.activePet === p.id;
+          const rank = petRankOf(meta, p.id);
+          const left = Math.max(0, (meta.petReborn[p.id] ?? 0) - now);
+          const reborning = lvl > 0 && left > 0;
+          const active = meta.activePet === p.id && !reborning;
+          const canReborn = lvl >= PET_MAX && rank < PET_REBIRTH.maxRank && !reborning;
+          const cost = PET_REBIRTH.gemCost(rank);
+          const hms = `${Math.floor(left / 3600000)}:${String(Math.floor(left / 60000) % 60).padStart(2, '0')}:${String(Math.floor(left / 1000) % 60).padStart(2, '0')}`;
           return (
             <div key={p.id} className={`flex items-center gap-2 rounded-lg p-2 border ${lvl ? (active ? 'bg-pink-950/50 border-pink-400' : 'bg-black/30 border-pink-800/50') : 'bg-black/20 border-dashed border-purple-800/40 opacity-60'}`}>
               <span className={`text-3xl ${lvl ? '' : 'grayscale'}`}>{p.emoji}</span>
               <div className="flex-1 min-w-0 leading-tight">
-                <div className="text-sm font-bold text-pink-100">{lvl ? p.name : '???'} {lvl > 0 && <span className="text-xs text-pink-300">ур. {lvl}/{PET_MAX}</span>}</div>
-                <div className="text-[11px] text-purple-200">{lvl ? `${p.desc} × ${lvl}` : p.desc}</div>
+                <div className="text-sm font-bold text-pink-100">{lvl ? p.name : '???'} {lvl > 0 && <span className="text-xs text-pink-300">ур. {lvl}/{PET_MAX}{rank > 1 ? ` · ранг ${rank} (×${rank})` : ''}</span>}</div>
+                <div className="text-[11px] text-purple-200">{lvl ? `${p.desc} × ${lvl * rank}` : p.desc}</div>
+                {reborning && <div className="text-[11px] font-bold text-amber-300">🔄 Перерождается: {hms}</div>}
+                {canReborn && <div className="text-[10px] text-cyan-200/90">Макс. уровень: можно переродиться (ранг {rank + 1}, бонусы ×{rank + 1})</div>}
               </div>
-              {lvl > 0 && (
+              {lvl > 0 && canReborn && (
+                <button disabled={meta.gems < cost} onClick={() => onRebirth(p.id)} className="btn-purple px-2 py-1.5 rounded-lg text-[11px] font-bold disabled:opacity-50 leading-tight">
+                  🔄 {PET_REBIRTH.hours} ч<br />💎 {cost}
+                </button>
+              )}
+              {lvl > 0 && !canReborn && !reborning && (
                 <button onClick={() => onSet(active ? null : p.id)} className={`px-2.5 py-1.5 rounded-lg text-xs font-bold ${active ? 'btn-purple' : 'btn-fantasy'}`}>
                   {active ? '✓ С тобой' : 'Взять'}
                 </button>

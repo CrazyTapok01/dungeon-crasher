@@ -153,11 +153,11 @@ export default function App() {
           <InventoryPanel
             inventory={state.inventory} limit={inventoryLimit(state.meta.rebirths)} equipped={state.equipped}
             onEquip={game.equipItem} onSell={game.sellItem}
-            onEquipBest={game.equipBest} onSellJunk={game.sellJunk} gold={hero.gold} onEnhance={game.enhance} heroClass={state.heroClass}
+            onEquipBest={game.equipBest} onSellJunk={game.sellJunk} gold={hero.gold} onEnhance={game.enhance} heroClass={state.heroClass} autoSell={state.settings.autoSell} onAutoSell={game.setAutoSell}
           />
         )}
         {tab === 'craft' && (
-          <CraftPanel inventory={state.inventory} limit={inventoryLimit(state.meta.rebirths)} onCraft={game.craft} />
+          <CraftPanel inventory={state.inventory} limit={inventoryLimit(state.meta.rebirths)} gold={hero.gold} onCraft={game.craft} />
         )}
         {tab === 'shop' && (
           <ShopPanel
@@ -169,7 +169,7 @@ export default function App() {
         {tab === 'more' && (
           <MorePanel
             hero={hero} meta={state.meta} muted={muted} autoAbilities={state.settings.autoAbilities}
-            onRebirth={() => setConfirm('rebirth')} onClaimDaily={game.claimDaily} onSetPet={game.setPet} onBuyGem={game.buyGem} onPetCrate={game.petCrate} onReset={() => setConfirm('reset')}
+            onRebirth={() => setConfirm('rebirth')} onClaimDaily={game.claimDaily} onSetPet={game.setPet} onPetRebirth={game.petRebirth} onBuyGem={game.buyGem} onBuySoul={game.buySoul} onPact={game.togglePact} onAltar={game.altar} onPetCrate={game.petCrate} onReset={() => setConfirm('reset')}
             onToggleSound={toggleSound} onToggleAuto={() => game.setAutoAbilities(!state.settings.autoAbilities)}
           />
         )}

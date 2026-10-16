@@ -134,7 +134,10 @@ const REB = { train1: 1, haggle: 2, fury: 3, train2: 4, rage: 5, chest: 6, bag: 
 /** Сколько уровней навыков максимум добавляет «Расширенное обучение» (I+II+III) — нужно для проверки сохранений. */
 export const MAX_PERK_LEVELS = 15;
 export const skillLevelBonus = (r: number) => (r >= REB.train1 ? 5 : 0) + (r >= REB.train2 ? 5 : 0) + (r >= REB.train3 ? 5 : 0);
-export const skillMaxLevel = (def: SkillDef, r: number) => def.maxLevel + (def.noPerkLevels ? 0 : skillLevelBonus(r));
+export const UNLIMITED = 1e9;
+/** В Преисподней навыки без жёсткого потолка прокачиваются бесконечно (крит, уклонение и вампиризм упираются в потолок характеристик). */
+export const skillMaxLevel = (def: SkillDef, r: number, world: WorldId = 'dungeon') =>
+  world === 'hell' && !def.noPerkLevels ? UNLIMITED : def.maxLevel + (def.noPerkLevels ? 0 : skillLevelBonus(r));
 export const skillUnlocked = (def: SkillDef, r: number) => r >= (def.unlockRebirths ?? 0);
 export const abilityUnlocked = (a: AbilityDef, level: number, r: number) => level >= a.unlockLevel && r >= (a.unlockRebirths ?? 0);
 export const upgradeDiscount = (r: number) => (r >= REB.haggle ? 0.85 : 1);
@@ -207,11 +210,11 @@ export function skillCost(def: SkillDef, level: number): number {
 //  3. РЕДКОСТЬ ПРЕДМЕТОВ (названия и цвета для интерфейса)
 // ════════════════════════════════════════════════════════════════
 
-export const RARITY_ORDER: Rarity[] = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
+export const RARITY_ORDER: Rarity[] = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'divine'];
 
 export const RARITY_NAME: Record<Rarity, string> = {
   common: 'Обычный', uncommon: 'Необычный', rare: 'Редкий',
-  epic: 'Эпический', legendary: 'Легендарный',
+  epic: 'Эпический', legendary: 'Легендарный', divine: 'Божественный',
 };
 
 export const RARITY_COLORS: Record<Rarity, { text: string; border: string; bg: string; glow: string; hex: string }> = {
@@ -220,6 +223,7 @@ export const RARITY_COLORS: Record<Rarity, { text: string; border: string; bg: s
   rare:      { text: 'text-blue-400',   border: 'border-blue-500',   bg: 'from-blue-900/40 to-gray-900/50',     glow: 'shadow-blue-500/40',   hex: '#60a5fa' },
   epic:      { text: 'text-purple-400', border: 'border-purple-500', bg: 'from-purple-900/40 to-gray-900/50',   glow: 'shadow-purple-500/50', hex: '#c084fc' },
   legendary: { text: 'text-amber-300',  border: 'border-amber-400',  bg: 'from-amber-900/40 to-gray-900/50',    glow: 'shadow-amber-400/60',  hex: '#fcd34d' },
+  divine:    { text: 'text-cyan-200',   border: 'border-cyan-300',   bg: 'from-cyan-800/50 to-indigo-950/60',   glow: 'shadow-cyan-300/80',   hex: '#67e8f9' },
 };
 
 // ════════════════════════════════════════════════════════════════
@@ -361,6 +365,9 @@ export function generateMonster(floor: number, stage: number, world: WorldId = '
     const k = HELL.monster;
     b.hp = Math.round(b.hp * k.hp); b.atk = Math.round(b.atk * k.atk); b.def = Math.round(b.def * k.def);
     b.gold = Math.round(b.gold * k.gold); b.xp = Math.round(b.xp * k.xp);
+    const af = hellAffix(floor);
+    b.hp = Math.round(b.hp * af.hp); b.atk = Math.round(b.atk * af.atk); b.def = Math.round(b.def * af.def);
+    b.gold = Math.round(b.gold * af.gold); b.xp = Math.round(b.xp * af.xp);
   }
   if (!hell && !isBoss && !isElite && floor >= GOBLIN.minFloor && Math.random() < GOBLIN.chance) {
     return {
@@ -381,6 +388,7 @@ export function generateMonster(floor: number, stage: number, world: WorldId = '
     gold: Math.round(b.gold * e.gold),
     xp:   Math.round(b.xp * e.xp),
     isBoss, isElite, tier, trait,
+    affix: hell ? hellAffix(floor).id : undefined,
     element: hell && Math.random() < 0.7 ? 'fire' : pick(ELEMENT_LIST),
   };
 }
@@ -401,10 +409,11 @@ const RARITY_ROLL = [
   { rarity: 'rare'      as Rarity, w: 12, bonus: 1.9 },
   { rarity: 'epic'      as Rarity, w: 6,  bonus: 2.6 },
   { rarity: 'legendary' as Rarity, w: 2,  bonus: 3.8 },
+  { rarity: 'divine'    as Rarity, w: 0.12, bonus: 6.0 }, // божественные вещи — очень редкая находка
 ];
 
 /** С боссов (и из сундуков) редкие вещи падают чаще. */
-const BOSS_RARITY_BOOST: Record<Rarity, number> = { common: 1, uncommon: 1, rare: 2, epic: 3, legendary: 5 };
+const BOSS_RARITY_BOOST: Record<Rarity, number> = { common: 1, uncommon: 1, rare: 2, epic: 3, legendary: 5, divine: 8 };
 
 function rollRarity(boosted: boolean) {
   const weights = RARITY_ROLL.map(r => r.w * (boosted ? BOSS_RARITY_BOOST[r.rarity] : 1));
@@ -424,8 +433,8 @@ const AFFIXES: Record<AffixKey, { min: number; max: number }> = {
   vamp:    { min: 1,  max: 3 },
 };
 /** Сколько бонусов-аффиксов у предмета каждой редкости (у амулетов — на один больше). */
-const AFFIX_COUNT: Record<Rarity, number> = { common: 0, uncommon: 0, rare: 1, epic: 2, legendary: 3 };
-const AFFIX_RARITY_MULT: Record<Rarity, number> = { common: 1, uncommon: 1, rare: 1, epic: 1.4, legendary: 1.9 };
+const AFFIX_COUNT: Record<Rarity, number> = { common: 0, uncommon: 0, rare: 1, epic: 2, legendary: 3, divine: 4 };
+const AFFIX_RARITY_MULT: Record<Rarity, number> = { common: 1, uncommon: 1, rare: 1, epic: 1.4, legendary: 1.9, divine: 2.6 };
 
 function rollAffixes(rarity: Rarity, slot: Item['slot']): Partial<Record<AffixKey, number>> {
   const count = Math.min(4, AFFIX_COUNT[rarity] + (slot === 'amulet' && rarity !== 'common' ? 1 : 0));
@@ -547,7 +556,7 @@ export function emptyMeta(): Meta {
     legendaries: 0, goldEarned: 0, abilitiesUsed: 0, achievements: [],
     kills: 0, relics: emptyRelics(), quests: [], questsDone: 0,
     daily: { last: '', streak: 0 }, goblins: 0,
-    gems: 0, gemUps: {}, petGear: { collar: null, armor: null, charm: null }, hellOpen: false, hellMax: 0,
+    gems: 0, gemUps: {}, petGear: { collar: null, armor: null, charm: null }, hellOpen: false, hellMax: 0, soulUps: {}, soulsSpent: 0, pacts: {}, altar: 0, petRank: emptyPets(), petReborn: emptyPets(),
     pets: emptyPets(), activePet: null, egg: -1,
   };
 }
@@ -725,36 +734,50 @@ export const counterOf = (enemy: Element): Element => ELEMENT_LIST.find(e => bea
 // ───────────────────────── крафт ─────────────────────────
 // 2 вещи одного слота и одного качества → 1 вещь следующего качества.
 
-export const CRAFT_RECIPES: { from: Rarity; to: Rarity }[] = [
-  { from: 'common', to: 'uncommon' },
-  { from: 'uncommon', to: 'rare' },
+export interface CraftRecipe { from: Rarity; to: Rarity; need: number; gold: number; chance: number }
+
+/**
+ * Рецепты. Чем выше качество, тем больше вещей и золота нужно; эпическое → легендарное может сорваться
+ * (сгорают все вещи, кроме лучшей). Божественные вещи не крафтятся — только редко выпадают.
+ */
+export const CRAFT_RECIPES: CraftRecipe[] = [
+  { from: 'common',    to: 'uncommon',  need: 2, gold: 0,     chance: 1 },
+  { from: 'uncommon',  to: 'rare',      need: 2, gold: 0,     chance: 1 },
+  { from: 'rare',      to: 'epic',      need: 2, gold: 400,   chance: 1 },
+  { from: 'epic',      to: 'legendary', need: 3, gold: 4000,  chance: 0.75 },
 ];
+/** Цена крафта растёт вместе с этажом (в Преисподней — с этажом её героя). */
+export const craftGoldCost = (rec: CraftRecipe, floor: number): number => Math.round(rec.gold * (1 + floor * 0.08));
 
 const rollBonus = (r: Rarity) => RARITY_ROLL.find(x => x.rarity === r)!.bonus;
 
-/** Материалы для крафта: вещи без заточки, сгруппированные по слоту и качеству; в паре — две самые слабые. */
+/** Материалы для крафта: вещи без заточки, сгруппированные по слоту и качеству; берутся самые слабые. */
 export function craftGroups(inventory: Item[]) {
   return CRAFT_RECIPES.flatMap(rec =>
     (['weapon', 'armor', 'amulet'] as const).map(slot => {
       const items = inventory.filter(i => i.slot === slot && i.rarity === rec.from && !i.plus)
         .sort((a, b) => itemScore(a) - itemScore(b));
-      return { ...rec, slot, count: items.length, pair: items.slice(0, 2) };
+      return { ...rec, slot, count: items.length, take: items.slice(0, rec.need), best: items[items.length - 1] };
     }));
 }
 
-/** Результат крафта: средние статьи двух вещей, усиленные качеством, плюс новые бонусы. */
-export function craftItem(a: Item, b: Item, to: Rarity): Item {
+/** Результат крафта: берётся ЛУЧШИЙ показатель из материалов, усиленный качеством, плюс новые бонусы. */
+export function craftItem(mats: Item[], to: Rarity): Item {
+  const a = mats[0];
   const k = rollBonus(to) / rollBonus(a.rarity);
-  const avg = (x?: number, y?: number) => (x === undefined && y === undefined ? undefined : Math.max(1, Math.round((((x ?? 0) + (y ?? 0)) / 2) * k)));
+  const top = (key: 'atk' | 'def' | 'hp') => {
+    const vals = mats.map(m => m[key]).filter((v): v is number => v !== undefined);
+    return vals.length ? Math.max(1, Math.round(Math.max(...vals) * k * 1.05)) : undefined;
+  };
   const base = a.name.replace(/\s*\+\d+$/, '');
-  const lvl = Math.max(...[a, b].map(i => Number(/\+(\d+)$/.exec(i.name)?.[1] ?? 0))) + 1;
+  const lvl = Math.max(...mats.map(i => Number(/\+(\d+)$/.exec(i.name)?.[1] ?? 0))) + 1;
   return {
     id: `item_${++idCounter}_${Date.now()}`,
     slot: a.slot, rarity: to, emoji: a.emoji,
     name: a.slot === 'amulet' ? base : `${base} +${lvl}`,
-    atk: avg(a.atk, b.atk), def: avg(a.def, b.def), hp: avg(a.hp, b.hp),
+    atk: top('atk'), def: top('def'), hp: top('hp'),
     ...rollAffixes(to, a.slot),
-    price: Math.round((a.price + b.price) * 0.75 * k),
+    price: Math.round(mats.reduce((s, m) => s + m.price, 0) * 0.8 * k),
   };
 }
 
@@ -794,6 +817,10 @@ export const spentTalents = (talents: Record<string, number>): number =>
 // новый вид или +1 уровень уже имеющемуся. Помогает один активный питомец.
 
 export const PET_MAX = 10;
+/** Перерождение питомца: на максимуме уровня за кристаллы; он уходит на время, возвращается 1-го уровня, но с рангом выше (бонусы × ранг). */
+export const PET_REBIRTH = { maxRank: 3, hours: 2, gemCost: (rank: number) => 5 * rank };
+export const petRankOf = (m: { petRank: Record<string, number> }, id: string): number => Math.max(1, m.petRank[id] ?? 1);
+export const petAvailable = (m: { petReborn: Record<string, number> }, id: string, now = Date.now()): boolean => (m.petReborn[id] ?? 0) <= now;
 export const EGG = { chance: 0.3, kills: 60 };
 
 export const PETS: PetDef[] = [
@@ -854,18 +881,73 @@ const HELL_AMULETS = ['Клык цербера', 'Сердце пламени', 
 export const GEM = { bossChance: 0.06, minBossFloor: 10, everyFloors: 10 };
 
 export const GEM_SHOP: GemUpgradeDef[] = [
-  { id: 'atk',   name: 'Руна ярости',      emoji: '⚔️', desc: '+20% к атаке',                        max: 5, baseCost: 3 },
-  { id: 'hp',    name: 'Руна стойкости',   emoji: '❤️', desc: '+20% к здоровью',                     max: 5, baseCost: 3 },
-  { id: 'gold',  name: 'Руна алчности',    emoji: '🪙', desc: '+25% к золоту и углям',               max: 5, baseCost: 2 },
-  { id: 'xp',    name: 'Руна мудрости',    emoji: '📖', desc: '+25% к опыту',                        max: 5, baseCost: 2 },
-  { id: 'souls', name: 'Печать душ',       emoji: '👻', desc: '+10% душ при перерождении',           max: 5, baseCost: 4 },
-  { id: 'luck',  name: 'Печать удачи',     emoji: '🍀', desc: '+10% к шансу реликвий и яиц',         max: 5, baseCost: 3 },
-  { id: 'heart', name: 'Сердце бездны',    emoji: '🫀', desc: '+15% к атаке и здоровью',             max: 3, baseCost: 8 },
+  { id: 'atk',   name: 'Руна ярости',      emoji: '⚔️', desc: '+20% к атаке',                        max: 12, baseCost: 3 },
+  { id: 'hp',    name: 'Руна стойкости',   emoji: '❤️', desc: '+20% к здоровью',                     max: 12, baseCost: 3 },
+  { id: 'gold',  name: 'Руна алчности',    emoji: '🪙', desc: '+25% к золоту и углям',               max: 12, baseCost: 2 },
+  { id: 'xp',    name: 'Руна мудрости',    emoji: '📖', desc: '+25% к опыту',                        max: 12, baseCost: 2 },
+  { id: 'souls', name: 'Печать душ',       emoji: '👻', desc: '+10% душ при перерождении',           max: 12, baseCost: 4 },
+  { id: 'luck',  name: 'Печать удачи',     emoji: '🍀', desc: '+10% к шансу реликвий и яиц',         max: 12, baseCost: 3 },
+  { id: 'heart', name: 'Сердце бездны',    emoji: '🫀', desc: '+15% к атаке и здоровью',             max: 8, baseCost: 8 },
 ];
 export const gemUpgradeCost = (d: GemUpgradeDef, level: number): number => d.baseCost * (level + 1);
 export const gemLevel = (ups: Record<string, number>, id: string): number => ups[id] ?? 0;
 /** Общий множитель для процентного бонуса «Бездны». */
 export const gemPct = (ups: Record<string, number>, id: string, perLevel: number): number => gemLevel(ups, id) * perLevel;
+
+// ───────────────────────── лавка душ ─────────────────────────
+// Души — не только бонус к силе. Их можно ТРАТИТЬ на постоянные улучшения; бонус «за каждую душу» при этом
+// считается от всех заработанных душ, так что трата ничего не отнимает. Улучшения не сбрасываются перерождением.
+
+export interface SoulUpgradeDef { id: string; name: string; emoji: string; desc: string; per: number; max: number; baseCost: number }
+export const SOUL_SHOP: SoulUpgradeDef[] = [
+  { id: 'atk',   name: 'Клыки мертвецов',  emoji: '🦷', desc: '+3% к атаке за уровень',                per: 3,   max: 50, baseCost: 12 },
+  { id: 'hp',    name: 'Кровь павших',     emoji: '🩸', desc: '+3% к здоровью за уровень',             per: 3,   max: 50, baseCost: 12 },
+  { id: 'def',   name: 'Плащ из теней',    emoji: '🧥', desc: '+2% к защите за уровень',               per: 2,   max: 50, baseCost: 10 },
+  { id: 'gold',  name: 'Серебро призраков', emoji: '🪙', desc: '+4% к золоту и углям за уровень',       per: 4,   max: 50, baseCost: 10 },
+  { id: 'xp',    name: 'Шёпот предков',    emoji: '📖', desc: '+4% к опыту за уровень',                per: 4,   max: 50, baseCost: 10 },
+  { id: 'regen', name: 'Дыхание жизни',    emoji: '🌿', desc: '+1 регенерации за ход за уровень',      per: 1,   max: 20, baseCost: 15 },
+  { id: 'start', name: 'Наследство',       emoji: '💼', desc: '+250 стартового золота за уровень',     per: 250, max: 40, baseCost: 8 },
+];
+/** Цена растёт плавно: «не сильно дорого». */
+export const soulUpgradeCost = (d: SoulUpgradeDef, level: number): number => Math.round(d.baseCost * (1 + level * 0.5));
+export const soulUpLevel = (ups: Record<string, number>, id: string): number => ups[id] ?? 0;
+export const soulsAvailable = (m: { souls: number; soulsSpent: number }): number => Math.max(0, m.souls - m.soulsSpent);
+
+// ───────────────────────── Преисподняя: новые механики ─────────────────────────
+// 1) Аффиксы этажей: у каждого этажа свой «закон», он меняет силу и награды монстров.
+// 2) Договоры: включаемые сделки «плюс за минус» для Охотника.
+// 3) Алтарь: угли превращаются в души (которые усиливают и основной мир).
+
+export interface HellAffix { id: string; emoji: string; name: string; desc: string; hp: number; atk: number; def: number; gold: number; xp: number }
+export const HELL_AFFIXES: HellAffix[] = [
+  { id: 'lava',   emoji: '🌋', name: 'Лавовый поток',   desc: 'Враги бьют сильнее (+20%), угли +40%',      hp: 1,   atk: 1.2, def: 1,   gold: 1.4, xp: 1 },
+  { id: 'moon',   emoji: '🩸', name: 'Кровавая луна',   desc: 'Хрупкие, но яростные: −20% HP, +40% урона, опыт +40%', hp: 0.8, atk: 1.4, def: 1, gold: 1, xp: 1.4 },
+  { id: 'frost',  emoji: '❄️', name: 'Ледяной ад',      desc: 'Прочные враги (+40% HP, +30% защиты), угли +60%', hp: 1.4, atk: 1,   def: 1.3, gold: 1.6, xp: 1 },
+  { id: 'ash',    emoji: '🌫️', name: 'Пепельный шторм', desc: 'Враги слабее бьют (−20%), но живучи (+20% HP), опыт +30%', hp: 1.2, atk: 0.8, def: 1, gold: 1, xp: 1.3 },
+  { id: 'eye',    emoji: '👁️', name: 'Взор Бездны',     desc: 'Всё сильнее на 15%, но угли и опыт +50%',   hp: 1.15, atk: 1.15, def: 1.15, gold: 1.5, xp: 1.5 },
+  { id: 'feast',  emoji: '😈', name: 'Пир демонов',     desc: 'Огромный риск: +60% HP, +30% урона, угли ×2.2', hp: 1.6, atk: 1.3, def: 1, gold: 2.2, xp: 1 },
+];
+/** Аффикс этажа: детерминирован, меняется каждые 2 этажа. */
+export const hellAffix = (floor: number): HellAffix => HELL_AFFIXES[(Math.floor((Math.max(1, floor) - 1) / 2) * 5 + 2) % HELL_AFFIXES.length];
+
+export interface PactDef { id: string; emoji: string; name: string; desc: string; atk?: number; hp?: number; def?: number; gold?: number; xp?: number }
+/** Числа — в процентах; можно включать любые сочетания. */
+export const HELL_PACTS: PactDef[] = [
+  { id: 'blood',  emoji: '🩸', name: 'Кровавый договор',  desc: '+45% к атаке, −25% к здоровью',         atk: 45, hp: -25 },
+  { id: 'greed',  emoji: '💰', name: 'Договор алчности',  desc: '+70% углей, −20% к атаке',              gold: 70, atk: -20 },
+  { id: 'dark',   emoji: '🌑', name: 'Договор тьмы',      desc: '+60% опыта, −20% к здоровью',           xp: 60, hp: -20 },
+  { id: 'iron',   emoji: '⛓️', name: 'Железный договор',  desc: '+50% к защите и +20% к здоровью, −30% углей', def: 50, hp: 20, gold: -30 },
+];
+export const pactTotals = (pacts: Record<string, boolean>) => {
+  const t = { atk: 0, hp: 0, def: 0, gold: 0, xp: 0 };
+  for (const p of HELL_PACTS) if (pacts[p.id]) { t.atk += p.atk ?? 0; t.hp += p.hp ?? 0; t.def += p.def ?? 0; t.gold += p.gold ?? 0; t.xp += p.xp ?? 0; }
+  return t;
+};
+
+export const ALTAR = { baseCost: 400, growth: 1.10, floorShare: 0.15 };
+/** Сколько углей стоит жертва и сколько душ она даёт. */
+export const altarCost = (count: number, floor: number): number => Math.round(ALTAR.baseCost * Math.pow(ALTAR.growth, count) * (1 + floor * ALTAR.floorShare));
+export const altarSouls = (floor: number): number => 1 + Math.floor(floor / 4);
 
 // ───────────────────────── снаряжение питомца ─────────────────────────
 // Три слота; вещь усиливает бонусы активного питомца. Ящики: за золото (дёшево, чаще обычное) и за кристаллы (лучше).
@@ -875,10 +957,10 @@ export const PET_SLOTS: { id: PetSlot; name: string; emoji: string }[] = [
   { id: 'armor',  name: 'Броня',   emoji: '🛡️' },
   { id: 'charm',  name: 'Амулет',  emoji: '🔔' },
 ];
-export const PET_GEAR_MULT: Record<Rarity, number> = { common: 0.10, uncommon: 0.20, rare: 0.35, epic: 0.55, legendary: 0.80 };
+export const PET_GEAR_MULT: Record<Rarity, number> = { common: 0.10, uncommon: 0.20, rare: 0.35, epic: 0.55, legendary: 0.80, divine: 1.20 };
 export const PET_CRATES: Record<'basic' | 'gem', { name: string; emoji: string; gemCost: number; weights: number[] }> = {
-  basic: { name: 'Ящик питомца', emoji: '📦', gemCost: 0, weights: [60, 25, 10, 4, 1] },
-  gem:   { name: 'Бездонный ящик', emoji: '🎁', gemCost: 3, weights: [0, 25, 40, 25, 10] },
+  basic: { name: 'Ящик питомца', emoji: '📦', gemCost: 0, weights: [60, 25, 10, 4, 1, 0.1] },
+  gem:   { name: 'Бездонный ящик', emoji: '🎁', gemCost: 3, weights: [0, 25, 38, 25, 11, 1] },
 };
 export const petCrateGoldCost = (floor: number): number => Math.round(200 + floor * 80);
 export const petGearMult = (gear: Record<PetSlot, Rarity | null>): number =>
