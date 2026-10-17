@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useGame } from './hooks/useGame';
-import { WORLDS, ACHIEVEMENTS, PERKS, PRESTIGE, RELICS, dailyPreview, spentTalents, talentPoints, SKILLS, inventoryLimit, itemScore, skillCost, soulsForFloor } from './gameData';
+import { WORLDS, hellMult, hellRebirthCost, ACHIEVEMENTS, PERKS, PRESTIGE, RELICS, dailyPreview, spentTalents, talentPoints, SKILLS, inventoryLimit, itemScore, skillCost, soulsForFloor } from './gameData';
 import { isMuted, play, setMuted, unlockAudio } from './game/audio';
 import BattleScene from './components/BattleScene';
 import AbilityBar from './components/AbilityBar';
@@ -45,7 +45,7 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('combat');
   const [muted, setMutedState] = useState(isMuted());
   const [showMap, setShowMap] = useState(false);
-  const [confirm, setConfirm] = useState<'rebirth' | 'reset' | null>(null);
+  const [confirm, setConfirm] = useState<'rebirth' | 'reset' | 'hell' | null>(null);
   const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
 
   // Оформление Преисподней: меняем фон страницы и панелей
@@ -169,7 +169,7 @@ export default function App() {
         {tab === 'more' && (
           <MorePanel
             hero={hero} meta={state.meta} muted={muted} autoAbilities={state.settings.autoAbilities}
-            onRebirth={() => setConfirm('rebirth')} onClaimDaily={game.claimDaily} onSetPet={game.setPet} onPetRebirth={game.petRebirth} onBuyGem={game.buyGem} onBuySoul={game.buySoul} onPact={game.togglePact} onAltar={game.altar} onPetCrate={game.petCrate} onReset={() => setConfirm('reset')}
+            onRebirth={() => setConfirm('rebirth')} onClaimDaily={game.claimDaily} onSetPet={game.setPet} onPetRebirth={game.petRebirth} onBuyGem={game.buyGem} onBuySoul={game.buySoul} onPact={game.togglePact} onAltar={game.altar} onHellRebirth={() => setConfirm('hell')} onFarmUpgrade={game.farmUpgrade} onFarmCollect={game.farmCollect} onPetCrate={game.petCrate} onReset={() => setConfirm('reset')}
             onToggleSound={toggleSound} onToggleAuto={() => game.setAutoAbilities(!state.settings.autoAbilities)}
           />
         )}
@@ -209,6 +209,15 @@ export default function App() {
           confirmLabel="Переродиться"
           onCancel={() => setConfirm(null)}
           onConfirm={() => { setConfirm(null); setTab('combat'); game.rebirth(); }}
+        />
+      )}
+      {confirm === 'hell' && (
+        <ConfirmModal
+          title="🔥 Переродиться в Преисподней?"
+          text={`Это стоит ${hellRebirthCost(state.meta.hellRebirths)} 💎. Этаж, угли, навыки и вещи Охотника сбросятся, но все его характеристики навсегда станут ×${hellMult(state.meta.hellRebirths + 1)}.`}
+          confirmLabel="Переродиться"
+          onCancel={() => setConfirm(null)}
+          onConfirm={() => { setConfirm(null); setTab('combat'); game.hellRebirth(); }}
         />
       )}
       {confirm === 'reset' && (

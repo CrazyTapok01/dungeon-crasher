@@ -210,11 +210,11 @@ export function skillCost(def: SkillDef, level: number): number {
 //  3. РЕДКОСТЬ ПРЕДМЕТОВ (названия и цвета для интерфейса)
 // ════════════════════════════════════════════════════════════════
 
-export const RARITY_ORDER: Rarity[] = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'divine'];
+export const RARITY_ORDER: Rarity[] = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'divine', 'secret'];
 
 export const RARITY_NAME: Record<Rarity, string> = {
   common: 'Обычный', uncommon: 'Необычный', rare: 'Редкий',
-  epic: 'Эпический', legendary: 'Легендарный', divine: 'Божественный',
+  epic: 'Эпический', legendary: 'Легендарный', divine: 'Божественный', secret: '??? Secret',
 };
 
 export const RARITY_COLORS: Record<Rarity, { text: string; border: string; bg: string; glow: string; hex: string }> = {
@@ -223,6 +223,7 @@ export const RARITY_COLORS: Record<Rarity, { text: string; border: string; bg: s
   rare:      { text: 'text-blue-400',   border: 'border-blue-500',   bg: 'from-blue-900/40 to-gray-900/50',     glow: 'shadow-blue-500/40',   hex: '#60a5fa' },
   epic:      { text: 'text-purple-400', border: 'border-purple-500', bg: 'from-purple-900/40 to-gray-900/50',   glow: 'shadow-purple-500/50', hex: '#c084fc' },
   legendary: { text: 'text-amber-300',  border: 'border-amber-400',  bg: 'from-amber-900/40 to-gray-900/50',    glow: 'shadow-amber-400/60',  hex: '#fcd34d' },
+  secret:    { text: 'text-fuchsia-300', border: 'border-fuchsia-400', bg: 'from-fuchsia-900/60 to-black/70',   glow: 'shadow-fuchsia-400/90', hex: '#f0abfc' },
   divine:    { text: 'text-cyan-200',   border: 'border-cyan-300',   bg: 'from-cyan-800/50 to-indigo-950/60',   glow: 'shadow-cyan-300/80',   hex: '#67e8f9' },
 };
 
@@ -410,10 +411,11 @@ const RARITY_ROLL = [
   { rarity: 'epic'      as Rarity, w: 6,  bonus: 2.6 },
   { rarity: 'legendary' as Rarity, w: 2,  bonus: 3.8 },
   { rarity: 'divine'    as Rarity, w: 0.12, bonus: 6.0 }, // божественные вещи — очень редкая находка
+  { rarity: 'secret'    as Rarity, w: 0.01, bonus: 60 },  // ??? Secret: ~1 из 10 000, сила ×10 от божественной
 ];
 
 /** С боссов (и из сундуков) редкие вещи падают чаще. */
-const BOSS_RARITY_BOOST: Record<Rarity, number> = { common: 1, uncommon: 1, rare: 2, epic: 3, legendary: 5, divine: 8 };
+const BOSS_RARITY_BOOST: Record<Rarity, number> = { common: 1, uncommon: 1, rare: 2, epic: 3, legendary: 5, divine: 8, secret: 3 };
 
 function rollRarity(boosted: boolean) {
   const weights = RARITY_ROLL.map(r => r.w * (boosted ? BOSS_RARITY_BOOST[r.rarity] : 1));
@@ -433,8 +435,8 @@ const AFFIXES: Record<AffixKey, { min: number; max: number }> = {
   vamp:    { min: 1,  max: 3 },
 };
 /** Сколько бонусов-аффиксов у предмета каждой редкости (у амулетов — на один больше). */
-const AFFIX_COUNT: Record<Rarity, number> = { common: 0, uncommon: 0, rare: 1, epic: 2, legendary: 3, divine: 4 };
-const AFFIX_RARITY_MULT: Record<Rarity, number> = { common: 1, uncommon: 1, rare: 1, epic: 1.4, legendary: 1.9, divine: 2.6 };
+const AFFIX_COUNT: Record<Rarity, number> = { common: 0, uncommon: 0, rare: 1, epic: 2, legendary: 3, divine: 4, secret: 4 };
+const AFFIX_RARITY_MULT: Record<Rarity, number> = { common: 1, uncommon: 1, rare: 1, epic: 1.4, legendary: 1.9, divine: 2.6, secret: 10 };
 
 function rollAffixes(rarity: Rarity, slot: Item['slot']): Partial<Record<AffixKey, number>> {
   const count = Math.min(4, AFFIX_COUNT[rarity] + (slot === 'amulet' && rarity !== 'common' ? 1 : 0));
@@ -556,7 +558,7 @@ export function emptyMeta(): Meta {
     legendaries: 0, goldEarned: 0, abilitiesUsed: 0, achievements: [],
     kills: 0, relics: emptyRelics(), quests: [], questsDone: 0,
     daily: { last: '', streak: 0 }, goblins: 0,
-    gems: 0, gemUps: {}, petGear: { collar: null, armor: null, charm: null }, hellOpen: false, hellMax: 0, soulUps: {}, soulsSpent: 0, pacts: {}, altar: 0, petRank: emptyPets(), petReborn: emptyPets(),
+    gems: 0, gemUps: {}, petGear: { collar: null, armor: null, charm: null }, hellOpen: false, hellMax: 0, soulUps: {}, soulsSpent: 0, pacts: {}, altar: 0, hellRebirths: 0, farms: {}, farmAt: 0, petRank: emptyPets(), petReborn: emptyPets(),
     pets: emptyPets(), activePet: null, egg: -1,
   };
 }
@@ -944,6 +946,25 @@ export const pactTotals = (pacts: Record<string, boolean>) => {
   return t;
 };
 
+/** Перерождение в Преисподней: сбрасывает забег Охотника, даёт постоянный множитель всех характеристик. */
+export const HELL_REBIRTH = { baseCost: 20, minFloor: 20 };
+export const hellRebirthCost = (n: number): number => HELL_REBIRTH.baseCost * (n + 1);
+/** 0 перерождений — ×1, 1 — ×2, 2 — ×3… */
+export const hellMult = (n: number): number => 1 + n;
+
+/** Кристальные фермы: открываются с рекорда 150-го этажа Преисподней, улучшаются углями, дают кристаллы со временем. */
+export const FARM = { unlockFloor: 150, capHours: 12 };
+export interface FarmDef { id: string; name: string; emoji: string; desc: string; max: number; baseCoal: number; growth: number; perLevel: number }
+export const FARMS: FarmDef[] = [
+  { id: 'vein',  name: 'Кристальная жила', emoji: '⛏️', desc: '+0.1 💎 в час за уровень (копится до 12 часов)', max: 20, baseCoal: 1e6,  growth: 3.2, perLevel: 0.1 },
+  { id: 'focus', name: 'Резонанс бездны',  emoji: '🔮', desc: '+10% к шансу кристалла с боссов за уровень',      max: 10, baseCoal: 5e6,  growth: 3.5, perLevel: 0.1 },
+];
+export const farmCost = (d: FarmDef, level: number): number => Math.round(d.baseCoal * Math.pow(d.growth, level));
+export const farmRate = (farms: Record<string, number>): number => (farms.vein ?? 0) * FARMS[0].perLevel; // кристаллов в час
+/** Сколько уже накопилось (дробное), с ограничением по запасу. */
+export const farmPending = (m: { farms: Record<string, number>; farmAt: number }, now = Date.now()): number =>
+  m.farmAt > 0 ? Math.min(FARM.capHours, Math.max(0, (now - m.farmAt) / 3600000)) * farmRate(m.farms) : 0;
+
 export const ALTAR = { baseCost: 400, growth: 1.10, floorShare: 0.15 };
 /** Сколько углей стоит жертва и сколько душ она даёт. */
 export const altarCost = (count: number, floor: number): number => Math.round(ALTAR.baseCost * Math.pow(ALTAR.growth, count) * (1 + floor * ALTAR.floorShare));
@@ -957,7 +978,7 @@ export const PET_SLOTS: { id: PetSlot; name: string; emoji: string }[] = [
   { id: 'armor',  name: 'Броня',   emoji: '🛡️' },
   { id: 'charm',  name: 'Амулет',  emoji: '🔔' },
 ];
-export const PET_GEAR_MULT: Record<Rarity, number> = { common: 0.10, uncommon: 0.20, rare: 0.35, epic: 0.55, legendary: 0.80, divine: 1.20 };
+export const PET_GEAR_MULT: Record<Rarity, number> = { common: 0.10, uncommon: 0.20, rare: 0.35, epic: 0.55, legendary: 0.80, divine: 1.20, secret: 3.00 };
 export const PET_CRATES: Record<'basic' | 'gem', { name: string; emoji: string; gemCost: number; weights: number[] }> = {
   basic: { name: 'Ящик питомца', emoji: '📦', gemCost: 0, weights: [60, 25, 10, 4, 1, 0.1] },
   gem:   { name: 'Бездонный ящик', emoji: '🎁', gemCost: 3, weights: [0, 25, 38, 25, 11, 1] },

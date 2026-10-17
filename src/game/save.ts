@@ -2,7 +2,7 @@ import type {
   ClassId, Equipment, PetId, HeroState, Item, ItemSlot, Meta, QuestKind, Rarity, RunSnapshot, WorldId, Settings, SkillLevels, UpgradeCounts,
 } from '../types';
 import {
-  ACHIEVEMENTS, INITIAL_HERO, QUEST_INFO, RARITY_NAME, RELICS, RELIC_MAX, SKILLS, HELL_PACTS, SOUL_SHOP,
+  ACHIEVEMENTS, INITIAL_HERO, QUEST_INFO, RARITY_NAME, RELICS, RELIC_MAX, SKILLS, HELL_PACTS, SOUL_SHOP, FARMS,
   STAGES_PER_FLOOR, GEM_SHOP, PETS, PET_MAX, TALENTS, emptyPets, emptyMeta, emptyRelics, emptySkillLevels, fillQuests,
 } from '../gameData';
 
@@ -119,6 +119,7 @@ function sanitizeMeta(raw: unknown, hero: HeroState): Meta {
     questsDone: num(r.questsDone),
     goblins: num(r.goblins),
     gems: num(r.gems), hellMax: num(r.hellMax), hellOpen: r.hellOpen === true,
+    hellRebirths: num(r.hellRebirths), farms: sanitizeFarms(r.farms), farmAt: num(r.farmAt),
     petRank: sanitizePetNums(r.petRank, 1, 3, 1), petReborn: sanitizePetNums(r.petReborn, 0, 1e15, 0),
     soulUps: sanitizeSoulUps(r.soulUps), soulsSpent: num(r.soulsSpent), altar: num(r.altar), pacts: sanitizePacts(r.pacts),
     gemUps: sanitizeGemUps(r.gemUps), petGear: sanitizePetGear(r.petGear),
@@ -135,6 +136,12 @@ function sanitizePetNums(raw: unknown, lo: number, hi: number, dflt: number): Re
   const r = asRecord(raw);
   const out = emptyPets();
   for (const p of PETS) out[p.id] = typeof r[p.id] === 'number' ? clamp(Math.floor(r[p.id] as number), lo, hi) : dflt;
+  return out;
+}
+function sanitizeFarms(raw: unknown): Record<string, number> {
+  const r = asRecord(raw);
+  const out: Record<string, number> = {};
+  for (const d of FARMS) { const v = clamp(Math.floor(num(r[d.id])), 0, d.max); if (v > 0) out[d.id] = v; }
   return out;
 }
 function sanitizeSoulUps(raw: unknown): Record<string, number> {
@@ -201,7 +208,7 @@ function fromRecord(d: Record<string, unknown>): SaveData {
     meta: sanitizeMeta(d.meta, hero),
     upgradeCounts: sanitizeCounts(d.upgradeCounts),
     settings: { autoAbilities: settings.autoAbilities !== false, autoElement: settings.autoElement === true,
-      autoSell: Array.isArray(settings.autoSell) ? settings.autoSell.filter((r): r is Rarity => typeof r === 'string' && r in RARITY_NAME && r !== 'divine') : [] },
+      autoSell: Array.isArray(settings.autoSell) ? settings.autoSell.filter((r): r is Rarity => typeof r === 'string' && r in RARITY_NAME && r !== 'divine' && r !== 'secret') : [] },
     heroClass: d.heroClass === 'warrior' || d.heroClass === 'mage' || d.heroClass === 'thief' ? d.heroClass : null,
     talents: sanitizeTalents(d.talents),
     world: d.world === 'hell' && asRecord(d.offRun).hero ? 'hell' : 'dungeon',

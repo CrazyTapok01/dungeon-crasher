@@ -232,11 +232,11 @@ export default function ParticleLayer({ ambient, lightColor, ref }: Props) {
       switch (p.shape) {
         case 'spark':
         case 'dot':
-          ctx.beginPath(); ctx.arc(p.x, p.y, p.size * (p.shape === 'spark' ? 0.6 + alpha * 0.6 : 1), 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(0.1, p.size * (p.shape === 'spark' ? 0.6 + alpha * 0.6 : 1)), 0, Math.PI * 2); ctx.fill();
           break;
         case 'ring':
           ctx.lineWidth = 2 + 3 * alpha;
-          ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.stroke();
+          ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(0.1, p.size), 0, Math.PI * 2); ctx.stroke();
           break;
         case 'smoke':
           ctx.globalAlpha = 0.45 * Math.min(1, alpha * 1.4);
@@ -264,7 +264,7 @@ export default function ParticleLayer({ ambient, lightColor, ref }: Props) {
         case 'coin': {
           ctx.save(); ctx.translate(p.x, p.y);
           ctx.scale(Math.abs(Math.cos(p.rot)) * 0.8 + 0.2, 1); // «вращение» монеты
-          ctx.beginPath(); ctx.arc(0, 0, p.size, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(0, 0, Math.max(0.1, p.size), 0, Math.PI * 2); ctx.fill();
           ctx.strokeStyle = '#92400e'; ctx.lineWidth = 1.2; ctx.stroke();
           ctx.restore();
           break;

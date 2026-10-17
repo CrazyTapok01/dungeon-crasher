@@ -239,10 +239,11 @@ export default function BattleScene({ state, stats }: Props) {
           break;
         case 'loot': {
           const hex = RARITY_COLORS[e.rarity].hex;
-          const big = e.rarity === 'epic' || e.rarity === 'legendary' || e.rarity === 'divine';
+          const big = e.rarity === 'epic' || e.rarity === 'legendary' || e.rarity === 'divine' || e.rarity === 'secret';
           burst('loot', 'monster', 200, { color: hex, big });
           if (e.rarity === 'legendary') flash('#fcd34d', 0.3, 700);
           if (e.rarity === 'divine') flash('#67e8f9', 0.45, 1000);
+          if (e.rarity === 'secret') flash('#f0abfc', 0.6, 1600);
           break;
         }
         case 'hero_died':

@@ -1,6 +1,6 @@
 // Здесь только типы — никакого рабочего кода.
 
-export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary' | 'divine';
+export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary' | 'divine' | 'secret';
 export type ItemSlot = 'weapon' | 'armor' | 'amulet';
 
 export interface Item {
@@ -176,6 +176,9 @@ export interface Meta {
   soulsSpent: number;          // потрачено душ в лавке (бонус душ считается от всех заработанных)
   pacts: Record<string, boolean>;  // включённые договоры Преисподней
   altar: number;               // сколько раз приносили жертву на алтаре
+  hellRebirths: number;        // перерождения в Преисподней
+  farms: Record<string, number>; // уровни кристальных ферм
+  farmAt: number;              // с какого момента (мс) копятся кристаллы фермы
   petRank: Record<PetId, number>;   // ранг питомца: после перерождения бонусы умножаются на ранг
   petReborn: Record<PetId, number>; // когда питомец вернётся из перерождения (мс), 0 — не перерождается
 }

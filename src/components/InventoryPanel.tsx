@@ -54,7 +54,7 @@ export default function InventoryPanel({ inventory, limit, equipped, onEquip, on
       <div className="rounded-lg bg-black/30 border border-purple-800/50 p-2 mb-3">
         <div className="text-xs font-bold text-purple-200 text-center mb-1.5">🗑️ Авто-продажа при выпадении</div>
         <div className="flex flex-wrap justify-center gap-1.5">
-          {RARITY_ORDER.filter(r => r !== 'divine').map(r => {
+          {RARITY_ORDER.filter(r => r !== 'divine' && r !== 'secret').map(r => {
             const on = autoSell.includes(r);
             return (
               <button key={r} onClick={() => onAutoSell(r)}

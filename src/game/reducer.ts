@@ -9,7 +9,7 @@ import {
   SHIELD, SHOP_POTION, SHOP_UPGRADES, SKILLS, STAGES_PER_FLOOR, STRIKE, SWIFT_DODGE, THORNS_FRAC,
   TRAITS, abilityDef, abilityUnlocked, baseMonsterStats, biomeForFloor, chestCost, chestMinRarity,
   deathGoldKept, emptyCooldowns, emptyMeta, emptySkillLevels, emptyUpgradeCounts, generateItem,
-  generateMonster, PET_REBIRTH, petAvailable, petRankOf, HELL_PACTS, SOUL_SHOP, altarCost, altarSouls, craftGoldCost, soulUpLevel, soulUpgradeCost, soulsAvailable, GEM, GEM_SHOP, HELL, PET_CRATES, PET_GEAR_MULT, PET_SLOTS, WORLDS, gemLevel, gemUpgradeCost, petCrateGoldCost, petGearMult, EGG, PET_MAX, PETS, TALENTS, TALENT_MAX, petDef, spentTalents, talentBonus, talentPoints, CLASSES, CLASS_BONUS, CRAFT_RECIPES, counterOf, craftItem, craftGroups, ENHANCE, dailyPreview, enhanceCost, enhanceChance, sellPrice, todayKey, inventoryLimit, RELICS, RELIC_DROP, RELIC_MAX, QUEST_INFO, fillQuests, questProgress, itemScore, junkItems, skillCost, skillMaxLevel, skillUnlocked,
+  generateMonster, FARM, FARMS, HELL_REBIRTH, farmCost, farmPending, farmRate, hellRebirthCost, PET_REBIRTH, petAvailable, petRankOf, HELL_PACTS, SOUL_SHOP, altarCost, altarSouls, craftGoldCost, soulUpLevel, soulUpgradeCost, soulsAvailable, GEM, GEM_SHOP, HELL, PET_CRATES, PET_GEAR_MULT, PET_SLOTS, WORLDS, gemLevel, gemUpgradeCost, petCrateGoldCost, petGearMult, EGG, PET_MAX, PETS, TALENTS, TALENT_MAX, petDef, spentTalents, talentBonus, talentPoints, CLASSES, CLASS_BONUS, CRAFT_RECIPES, counterOf, craftItem, craftGroups, ENHANCE, dailyPreview, enhanceCost, enhanceChance, sellPrice, todayKey, inventoryLimit, RELICS, RELIC_DROP, RELIC_MAX, QUEST_INFO, fillQuests, questProgress, itemScore, junkItems, skillCost, skillMaxLevel, skillUnlocked,
   soulsForFloor, upgradeAmount, upgradeCost,
 } from '../gameData';
 import { computeStats, type Extras } from './stats';
@@ -83,6 +83,9 @@ export type Action =
   | { type: 'BUY_SOUL'; id: string }
   | { type: 'TOGGLE_PACT'; id: string }
   | { type: 'ALTAR' }
+  | { type: 'HELL_REBIRTH' }
+  | { type: 'FARM_UPGRADE'; id: string }
+  | { type: 'FARM_COLLECT' }
   | { type: 'PET_REBIRTH'; id: PetId }
   | { type: 'SET_AUTO_SELL'; rarity: Rarity }
   | { type: 'BUY_GEM'; id: string }
@@ -112,6 +115,7 @@ export const extrasOf = (s: Pick<GameState, 'heroClass' | 'talents' | 'meta' | '
   gemUps: s.meta.gemUps,
   soulUps: s.meta.soulUps,
   pacts: s.world === 'hell' ? s.meta.pacts : {},
+  hellRebirths: s.world === 'hell' ? s.meta.hellRebirths : -1,
   pet: s.meta.activePet && s.meta.pets[s.meta.activePet] > 0 && petAvailable(s.meta, s.meta.activePet)
     ? { id: s.meta.activePet, level: s.meta.pets[s.meta.activePet] * petRankOf(s.meta, s.meta.activePet) } : null,
 });
@@ -532,7 +536,7 @@ function defeatMonster(state: GameState): GameState {
   // 3а-1. кристалл бездны с босса (редко)
   if (monster.isBoss) {
     const hell = s.world === 'hell';
-    const chance = (hell ? HELL.gemBossChance : s.hero.floor >= GEM.minBossFloor ? GEM.bossChance : 0) * luck(s);
+    const chance = (hell ? HELL.gemBossChance : s.hero.floor >= GEM.minBossFloor ? GEM.bossChance : 0) * luck(s) * (1 + (s.meta.farms.focus ?? 0) * 0.1);
     if (Math.random() < chance) s = addGems(s, 1, 'босс');
   }
 
@@ -640,6 +644,7 @@ function dropItem(s: GameState, item: Item): GameState {
   const label = `${item.emoji} ${item.name} (${RARITY_NAME[item.rarity]})`;
   const meta = item.rarity === 'legendary' || item.rarity === 'divine' ? { ...s.meta, legendaries: s.meta.legendaries + 1 } : s.meta;
   s = emit({ ...s, meta }, { type: 'loot', rarity: item.rarity });
+  if (item.rarity === 'secret') s = emit(s, { type: 'quest', text: `✨ ??? SECRET: ${item.name}!!!` });
   // авто-продажа: выбранное качество и не лучше надетого в этом слоте
   const worn = s.equipped[item.slot];
   if (s.settings.autoSell.includes(item.rarity) && worn && itemScore(item) <= itemScore(worn)) {
@@ -818,10 +823,58 @@ function reduce(state: GameState, action: Action): GameState {
     }
 
     case 'SET_AUTO_SELL': {
-      if (action.rarity === 'divine') return state;
+      if (action.rarity === 'divine' || action.rarity === 'secret') return state;
       const cur = state.settings.autoSell;
       const autoSell = cur.includes(action.rarity) ? cur.filter(r => r !== action.rarity) : [...cur, action.rarity];
       return { ...fresh, settings: { ...state.settings, autoSell } };
+    }
+
+    case 'HELL_REBIRTH': {
+      if (state.world !== 'hell' || state.hero.floor < HELL_REBIRTH.minFloor) return state;
+      const n = state.meta.hellRebirths;
+      const cost = hellRebirthCost(n);
+      if (state.meta.gems < cost) return state;
+      const meta: Meta = { ...state.meta, gems: state.meta.gems - cost, hellRebirths: n + 1 };
+      const fresh0 = state.offRun; // забег Подземелья сохраняется
+      let s = createState({
+        hero: { ...HELL.hero },
+        skillLevels: emptySkillLevels(),
+        equipped: {},
+        inventory: [],
+        meta,
+        upgradeCounts: emptyUpgradeCounts(),
+        settings: state.settings,
+        world: 'hell',
+        offRun: fresh0,
+      });
+      const txt = `🔥 Перерождение в Преисподней #${n + 1}: все характеристики ×${n + 2}`;
+      s = withLog(s, txt, 'boss');
+      return emit(emit(s, { type: 'rebirth', souls: 0 }), { type: 'quest', text: txt });
+    }
+
+    case 'FARM_UPGRADE': {
+      const d = FARMS.find(x => x.id === action.id);
+      if (!d || state.world !== 'hell' || state.meta.hellMax < FARM.unlockFloor) return state;
+      const lvl = state.meta.farms[d.id] ?? 0;
+      const cost = farmCost(d, lvl);
+      if (lvl >= d.max || state.hero.gold < cost) return state;
+      const now = Date.now();
+      const got = Math.floor(farmPending(state.meta, now));
+      const meta = { ...state.meta, gems: state.meta.gems + got, farms: { ...state.meta.farms, [d.id]: lvl + 1 }, farmAt: now };
+      return emit(withLog(withGold({ ...fresh, meta }, -cost), `${d.emoji} ${d.name} → ур. ${lvl + 1}`, 'ability'), { type: 'ui', kind: 'buy' });
+    }
+
+    case 'FARM_COLLECT': {
+      if (state.meta.hellMax < FARM.unlockFloor) return state;
+      const now = Date.now();
+      const pend = farmPending(state.meta, now);
+      const whole = Math.floor(pend);
+      if (whole < 1) return state;
+      const rate = farmRate(state.meta.farms);
+      const leftoverMs = rate > 0 ? ((pend - whole) / rate) * 3600000 : 0;
+      const meta = { ...state.meta, gems: state.meta.gems + whole, farmAt: now - leftoverMs };
+      const txt = `💎 С фермы собрано кристаллов: ${whole}`;
+      return emit(withLog({ ...fresh, meta }, txt, 'loot'), { type: 'quest', text: txt });
     }
 
     case 'BUY_SOUL': {

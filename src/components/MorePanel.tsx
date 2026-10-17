@@ -24,6 +24,9 @@ interface Props {
   onBuySoul: (id: string) => void;
   onPact: (id: string) => void;
   onAltar: () => void;
+  onHellRebirth: () => void;
+  onFarmUpgrade: (id: string) => void;
+  onFarmCollect: () => void;
   onPetCrate: (kind: 'basic' | 'gem') => void;
   onToggleSound: () => void;
   onToggleAuto: () => void;
@@ -32,7 +35,7 @@ interface Props {
 const GFX_LABEL: Record<GfxSetting, string> = { auto: 'Авто', high: 'Высокая', low: 'Низкая' };
 const NEXT_GFX: Record<GfxSetting, GfxSetting> = { auto: 'high', high: 'low', low: 'auto' };
 
-export default function MorePanel({ hero, meta, muted, autoAbilities, onRebirth, onClaimDaily, onSetPet, onPetRebirth, onReset, onBuyGem, onBuySoul, onPact, onAltar, onPetCrate, onToggleSound, onToggleAuto }: Props) {
+export default function MorePanel({ hero, meta, muted, autoAbilities, onRebirth, onClaimDaily, onSetPet, onPetRebirth, onReset, onBuyGem, onBuySoul, onPact, onAltar, onHellRebirth, onFarmUpgrade, onFarmCollect, onPetCrate, onToggleSound, onToggleAuto }: Props) {
   const gfx = useGfx();
   useFmt();
   const numMode = getNumMode();
@@ -74,7 +77,7 @@ export default function MorePanel({ hero, meta, muted, autoAbilities, onRebirth,
 
       <SoulShopPanel meta={meta} onBuy={onBuySoul} />
 
-      {meta.hellOpen && <HellPanel meta={meta} world={world} coals={hero.gold} floor={hero.floor} onPact={onPact} onAltar={onAltar} />}
+      {meta.hellOpen && <HellPanel meta={meta} world={world} coals={hero.gold} floor={hero.floor} onPact={onPact} onAltar={onAltar} onHellRebirth={onHellRebirth} onFarmUpgrade={onFarmUpgrade} onFarmCollect={onFarmCollect} />}
 
       <GemShopPanel meta={meta} onBuy={onBuyGem} />
 

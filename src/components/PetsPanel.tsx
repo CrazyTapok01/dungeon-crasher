@@ -75,16 +75,18 @@ function PetsPanel({ onRebirth, meta, gold, floor, coin, canBuyWithGold, onSet, 
                 {reborning && <div className="text-[11px] font-bold text-amber-300">🔄 Перерождается: {hms}</div>}
                 {canReborn && <div className="text-[10px] text-cyan-200/90">Макс. уровень: можно переродиться (ранг {rank + 1}, бонусы ×{rank + 1})</div>}
               </div>
-              {lvl > 0 && canReborn && (
-                <button disabled={meta.gems < cost} onClick={() => onRebirth(p.id)} className="btn-purple px-2 py-1.5 rounded-lg text-[11px] font-bold disabled:opacity-50 leading-tight">
-                  🔄 {PET_REBIRTH.hours} ч<br />💎 {cost}
-                </button>
-              )}
-              {lvl > 0 && !canReborn && !reborning && (
-                <button onClick={() => onSet(active ? null : p.id)} className={`px-2.5 py-1.5 rounded-lg text-xs font-bold ${active ? 'btn-purple' : 'btn-fantasy'}`}>
-                  {active ? '✓ С тобой' : 'Взять'}
-                </button>
-              )}
+              <div className="flex flex-col gap-1 shrink-0">
+                {lvl > 0 && canReborn && (
+                  <button disabled={meta.gems < cost} onClick={() => onRebirth(p.id)} className="btn-purple px-2 py-1.5 rounded-lg text-[11px] font-bold disabled:opacity-50 leading-tight">
+                    🔄 {PET_REBIRTH.hours} ч<br />💎 {cost}
+                  </button>
+                )}
+                {lvl > 0 && !reborning && (
+                  <button onClick={() => onSet(active ? null : p.id)} className={`px-2.5 py-1.5 rounded-lg text-xs font-bold ${active ? 'btn-purple' : 'btn-fantasy'}`}>
+                    {active ? '✓ С тобой' : 'Взять'}
+                  </button>
+                )}
+              </div>
             </div>
           );
         })}
