@@ -20,7 +20,7 @@ export function useGame() {
   const stats = useMemo(
     () => computeStats(state.hero, state.skillLevels, state.equipped, state.meta.souls, extrasOf(state)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state.hero, state.skillLevels, state.equipped, state.meta.souls, state.meta.relics, state.heroClass, state.talents, state.meta.activePet, state.meta.pets, state.meta.petRank, state.meta.petReborn, state.meta.found, state.meta.seen],
+    [state.hero, state.skillLevels, state.equipped, state.meta.souls, state.meta.relics, state.heroClass, state.talents, state.meta.activePet, state.meta.pets, state.meta.petRank, state.meta.petReborn, state.meta.found, state.meta.seen, state.meta.city.research, state.meta.city.bld, state.meta.sea.ship, state.meta.sea.lairs],
   );
 
   const skills = useMemo<Skill[]>(
@@ -141,6 +141,22 @@ export function useGame() {
     raidStart: () => dispatch({ type: 'RAID_START' }),
     weeklyRun: () => dispatch({ type: 'WEEKLY_RUN' }),
     claimWeekly: (need: number) => dispatch({ type: 'CLAIM_WEEKLY', need }),
+    cityOpen: () => dispatch({ type: 'CITY_OPEN' }),
+    cityCollect: () => dispatch({ type: 'CITY_COLLECT' }),
+    cityBuild: (id: string) => dispatch({ type: 'CITY_BUILD', id }),
+    cityResearch: (id: string) => dispatch({ type: 'CITY_RESEARCH', id }),
+    cityMission: (id: string) => dispatch({ type: 'CITY_MISSION', id }),
+    cityClaim: (index: number) => dispatch({ type: 'CITY_CLAIM', index }),
+    citySell: (lots: number) => dispatch({ type: 'CITY_SELL', lots }),
+    cityGem: () => dispatch({ type: 'CITY_GEM' }),
+    seaOpen: () => dispatch({ type: 'SEA_OPEN' }),
+    seaSail: (to: string) => dispatch({ type: 'SEA_SAIL', to }),
+    seaArrive: () => dispatch({ type: 'SEA_ARRIVE' }),
+    seaAct: () => dispatch({ type: 'SEA_ACT' }),
+    seaFood: (n: number) => dispatch({ type: 'SEA_FOOD', n }),
+    seaRepair: () => dispatch({ type: 'SEA_REPAIR' }),
+    seaUp: (part: 'hull' | 'cannon' | 'crew' | 'sails' | 'hold') => dispatch({ type: 'SEA_UP', part }),
+    seaTrade: (good: string, n: number) => dispatch({ type: 'SEA_TRADE', good, n }),
     towerRun: () => dispatch({ type: 'TOWER_RUN' }),
     dailyRun: () => dispatch({ type: 'DAILY_RUN' }),
     closeLadder: () => dispatch({ type: 'CLOSE_LADDER' }),

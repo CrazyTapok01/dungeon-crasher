@@ -3,6 +3,7 @@ import type {
   Quest, QuestKind, Rarity, RelicDef, RelicId, ShopUpgrade, SkillDef, SkillId, SkillLevels,
   UpgradeCounts, UpgradeKind, ItemSlot,
 } from './types';
+import { emptyCity, emptySea } from './game/worldsData';
 
 // ════════════════════════════════════════════════════════════════
 //  1. БАЛАНС — все «магические числа» игры собраны здесь
@@ -561,7 +562,7 @@ export function emptyMeta(): Meta {
     gems: 0, gemUps: {}, petGear: { collar: null, armor: null, charm: null }, hellOpen: false, hellMax: 0, soulUps: {}, soulsSpent: 0, pacts: {}, altar: 0, hellRebirths: 0, farms: {}, farmAt: 0, petRank: emptyPets(), petReborn: emptyPets(),
     stones: {}, seen: {}, found: [], collClaimed: [], tower: { best: 0, keys: TOWER.maxKeys, at: 0 }, challenge: { last: '', score: 0 },
     run: { start: 0, kills: 0, gold: 0, bosses: 0, bestHit: 0, best: null },
-    weekly: { week: 0, best: 0, claimed: [], lastDay: '' }, raid: { at: 0, wins: 0 },
+    weekly: { week: 0, best: 0, claimed: [], lastDay: '' }, raid: { at: 0, wins: 0 }, city: emptyCity(), sea: emptySea(),
     pets: emptyPets(), activePet: null, egg: -1,
   };
 }

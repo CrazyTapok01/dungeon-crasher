@@ -1,5 +1,6 @@
 import type { Meta, WorldId } from '../types';
 import { HELL, WORLDS } from '../gameData';
+import { CITY, SEA } from '../game/worldsData';
 
 interface Props {
   world: WorldId;
@@ -8,10 +9,11 @@ interface Props {
   onTravel: (to: WorldId) => void;
   onOpen: () => void;
   onClose: () => void;
+  onScreen: (s: 'city' | 'sea') => void;
 }
 
 /** Карта миров: Подземелье и Преисподняя. Прогресс каждого мира хранится отдельно. */
-export default function WorldMap({ world, meta, offFloor, onTravel, onOpen, onClose }: Props) {
+export default function WorldMap({ world, meta, offFloor, onTravel, onOpen, onClose, onScreen }: Props) {
   const dungeonFloor = world === 'dungeon' ? null : offFloor;
   const canOpen = meta.gems >= HELL.openCost;
   return (
@@ -56,6 +58,17 @@ export default function WorldMap({ world, meta, offFloor, onTravel, onOpen, onCl
           ) : world === 'hell'
             ? <div className="mt-2 text-center text-xs font-bold text-orange-300">📍 Ты здесь</div>
             : <button onClick={() => { onTravel('hell'); onClose(); }} className="btn-purple w-full mt-2 py-2 rounded-lg text-sm font-bold">🔥 Войти в Преисподнюю</button>}
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 mt-2.5">
+          <button onClick={() => { onScreen('city'); onClose(); }} className="rounded-xl p-2.5 border border-orange-800/70 bg-orange-950/40 text-center">
+            <div className="text-3xl">🏙️</div><div className="font-black text-orange-200 text-sm">Ржавый город</div>
+            <div className="text-[10px] text-orange-300/90 leading-tight">База и вылазки{meta.city.open ? '' : ` · с этажа ${CITY.unlockFloor}`}</div>
+          </button>
+          <button onClick={() => { onScreen('sea'); onClose(); }} className="rounded-xl p-2.5 border border-cyan-800/70 bg-cyan-950/40 text-center">
+            <div className="text-3xl">🌊</div><div className="font-black text-cyan-200 text-sm">Бездонное море</div>
+            <div className="text-[10px] text-cyan-300/90 leading-tight">Корабль и острова{meta.sea.open ? '' : ` · с этажа ${SEA.unlockFloor}`}</div>
+          </button>
         </div>
 
         <button onClick={onClose} className="btn-fantasy w-full mt-3 py-2 rounded-lg text-sm font-bold">Закрыть</button>

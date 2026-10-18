@@ -37,6 +37,7 @@ interface Props {
   onPetCrate: (kind: 'basic' | 'gem') => void;
   onToggleSound: () => void;
   onToggleAuto: () => void;
+  onScreen: (s: 'city' | 'sea') => void;
   state: GameState;
   game: ReturnType<typeof useGame>;
 }
@@ -79,7 +80,7 @@ function SaveTransfer({ game }: { game: ReturnType<typeof useGame> }) {
 const GFX_LABEL: Record<GfxSetting, string> = { auto: 'Авто', high: 'Высокая', low: 'Низкая' };
 const NEXT_GFX: Record<GfxSetting, GfxSetting> = { auto: 'high', high: 'low', low: 'auto' };
 
-export default function MorePanel({ hero, meta, muted, autoAbilities, onRebirth, onClaimDaily, onSetPet, onPetRebirth, onReset, onBuyGem, onBuySoul, onPact, onAltar, onHellRebirth, onFarmUpgrade, onFarmCollect, onPetCrate, onToggleSound, onToggleAuto, state, game }: Props) {
+export default function MorePanel({ hero, meta, muted, autoAbilities, onRebirth, onClaimDaily, onSetPet, onPetRebirth, onReset, onBuyGem, onBuySoul, onPact, onAltar, onHellRebirth, onFarmUpgrade, onFarmCollect, onPetCrate, onToggleSound, onToggleAuto, state, game, onScreen }: Props) {
   const gfx = useGfx();
   useFmt();
   const numMode = getNumMode();
@@ -114,6 +115,17 @@ export default function MorePanel({ hero, meta, muted, autoAbilities, onRebirth,
         </div>
         <button disabled={!canRebirth} onClick={onRebirth} className="btn-purple w-full py-3 rounded-xl font-black">
           {canRebirth ? `👻 Переродиться (+${gain} душ)` : inHell ? '🔒 Только в Подземелье' : '🔒 Пока недоступно'}
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <button onClick={() => onScreen('city')} className="rounded-xl p-2.5 border border-orange-800/70 bg-orange-950/40 text-center">
+          <div className="text-3xl">🏙️</div><div className="font-black text-orange-200 text-sm">Ржавый город</div>
+          <div className="text-[10px] text-orange-300/90 leading-tight">{meta.city.open ? 'База, вылазки, исследования' : 'Откроется с этажа 15'}</div>
+        </button>
+        <button onClick={() => onScreen('sea')} className="rounded-xl p-2.5 border border-cyan-800/70 bg-cyan-950/40 text-center">
+          <div className="text-3xl">🌊</div><div className="font-black text-cyan-200 text-sm">Бездонное море</div>
+          <div className="text-[10px] text-cyan-300/90 leading-tight">{meta.sea.open ? 'Корабль, острова, торговля' : 'Откроется с этажа 25'}</div>
         </button>
       </div>
 

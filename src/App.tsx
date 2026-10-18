@@ -19,6 +19,8 @@ import CraftPanel from './components/CraftPanel';
 import Tip from './components/Tip';
 import LadderModal from './components/LadderModal';
 import WorldMap from './components/WorldMap';
+import CityPanel from './components/CityPanel';
+import SeaPanel from './components/SeaPanel';
 import { fmt, useFmt } from './game/num';
 import { CoinContext, FloorContext, WorldContext } from './components/coin';
 
@@ -47,6 +49,7 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('combat');
   const [muted, setMutedState] = useState(isMuted());
   const [showMap, setShowMap] = useState(false);
+  const [screen, setScreen] = useState<'city' | 'sea' | null>(null);
   const [confirm, setConfirm] = useState<'rebirth' | 'reset' | 'hell' | null>(null);
   const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
 
@@ -173,7 +176,7 @@ export default function App() {
             hero={hero} meta={state.meta} muted={muted} autoAbilities={state.settings.autoAbilities}
             onRebirth={() => setConfirm('rebirth')} onClaimDaily={game.claimDaily} onSetPet={game.setPet} onPetRebirth={game.petRebirth} onBuyGem={game.buyGem} onBuySoul={game.buySoul} onPact={game.togglePact} onAltar={game.altar} onHellRebirth={() => setConfirm('hell')} onFarmUpgrade={game.farmUpgrade} onFarmCollect={game.farmCollect} onPetCrate={game.petCrate} onReset={() => setConfirm('reset')}
             onToggleSound={toggleSound} onToggleAuto={() => game.setAutoAbilities(!state.settings.autoAbilities)}
-            state={state} game={game}
+            state={state} game={game} onScreen={setScreen}
           />
         )}
       </main>
@@ -201,9 +204,11 @@ export default function App() {
           {toast.text}
         </div>
       )}
+      {screen === 'city' && <CityPanel state={state} game={game} onClose={() => setScreen(null)} />}
+      {screen === 'sea' && <SeaPanel state={state} game={game} onClose={() => setScreen(null)} />}
       {showMap && (
         <WorldMap world={state.world} meta={state.meta} offFloor={state.offRun?.hero.floor ?? 1}
-          onTravel={w => { setTab('combat'); game.travel(w); }} onOpen={game.openHell} onClose={() => setShowMap(false)} />
+          onTravel={w => { setTab('combat'); game.travel(w); }} onOpen={game.openHell} onClose={() => setShowMap(false)} onScreen={setScreen} />
       )}
       {state.offlineReport && <OfflineModal report={state.offlineReport} onClose={game.dismissOffline} />}
       {confirm === 'rebirth' && (

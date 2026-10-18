@@ -1,6 +1,7 @@
 import type {
-  ClassId, Equipment, PetId, HeroState, Item, ItemSlot, Meta, QuestKind, Rarity, RunSnapshot, WorldId, Settings, SkillLevels, UpgradeCounts,
+  CityState, SeaState, ClassId, Equipment, PetId, HeroState, Item, ItemSlot, Meta, QuestKind, Rarity, RunSnapshot, WorldId, Settings, SkillLevels, UpgradeCounts,
 } from '../types';
+import { GOODS, ISLANDS, MISSIONS, RESEARCH, SHIP_MAX, SHIP_PARTS, buildingDef, emptyCity, emptySea, hullMax } from './worldsData';
 import {
   ACHIEVEMENTS, INITIAL_HERO, QUEST_INFO, RARITY_NAME, RELICS, RELIC_MAX, SKILLS, HELL_PACTS, SOUL_SHOP, FARMS,
   STAGES_PER_FLOOR, GEM_SHOP, TOWER, parseStone, AUTO_ENHANCE_STEPS, AUTO_CRAFT_STEPS, PETS, PET_MAX, TALENTS, emptyPets, emptyMeta, emptyRelics, emptySkillLevels, fillQuests,
@@ -131,6 +132,7 @@ function sanitizeMeta(raw: unknown, hero: HeroState): Meta {
     run: sanitizeRunStats(r.run),
     weekly: { week: num(asRecord(r.weekly).week), best: num(asRecord(r.weekly).best), claimed: Array.isArray(asRecord(r.weekly).claimed) ? (asRecord(r.weekly).claimed as unknown[]).filter((x): x is number => typeof x === 'number') : [], lastDay: typeof asRecord(r.weekly).lastDay === 'string' ? (asRecord(r.weekly).lastDay as string) : '' },
     raid: { at: num(asRecord(r.raid).at), wins: num(asRecord(r.raid).wins) },
+    city: sanitizeCity(r.city), sea: sanitizeSea(r.sea),
     pets, activePet: ap ? ap.id : null, egg: typeof r.egg === 'number' ? clamp(Math.floor(r.egg), -1, 999) : -1,
     daily: {
       last: typeof asRecord(r.daily).last === 'string' ? (asRecord(r.daily).last as string) : '',
@@ -138,6 +140,47 @@ function sanitizeMeta(raw: unknown, hero: HeroState): Meta {
     },
   };
   return fillQuests(meta);
+}
+
+function numMap(raw: unknown, keys?: (k: string) => boolean, max = 1e6): Record<string, number> {
+  const r = asRecord(raw);
+  const out: Record<string, number> = {};
+  for (const k of Object.keys(r)) if ((!keys || keys(k)) && typeof r[k] === 'number' && Number.isFinite(r[k] as number)) out[k] = clamp(Math.floor(r[k] as number), 0, max);
+  return out;
+}
+const strList = (raw: unknown, ok: (s: string) => boolean = () => true): string[] => (Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string' && ok(x)).slice(0, 40) : []);
+
+function sanitizeCity(raw: unknown): CityState {
+  const r = asRecord(raw), d = emptyCity(), res = asRecord(r.res);
+  const bld = numMap(r.bld, k => !!buildingDef(k), 100);
+  return {
+    open: r.open === true,
+    res: { metal: Math.max(0, num(res.metal)), energy: Math.max(0, num(res.energy)), shards: Math.max(0, num(res.shards)) },
+    at: num(r.at),
+    bld: Object.keys(bld).length ? bld : d.bld,
+    research: numMap(r.research, k => RESEARCH.some(x => x.id === k), 100),
+    missions: Array.isArray(r.missions) ? r.missions.map(asRecord).filter(m => MISSIONS.some(x => x.id === m.id) && typeof m.endAt === 'number').map(m => ({ id: m.id as string, endAt: m.endAt as number })).slice(0, 4) : [],
+    gemsBought: Math.floor(num(r.gemsBought)), done: Math.floor(num(r.done)), report: strList(r.report).slice(0, 6),
+  };
+}
+
+function sanitizeSea(raw: unknown): SeaState {
+  const r = asRecord(raw), d = emptySea();
+  const ship = numMap(r.ship, k => SHIP_PARTS.some(p => p.id === k), SHIP_MAX);
+  for (const p of SHIP_PARTS) ship[p.id] = Math.max(1, ship[p.id] ?? 1);
+  const ids = (s: string) => ISLANDS.some(i => i.id === s);
+  const at = typeof r.at === 'string' && ids(r.at) ? r.at : 'harbor';
+  const v = asRecord(r.voyage);
+  const out: SeaState = {
+    ...d, open: r.open === true, at,
+    voyage: ids(v.from as string) && ids(v.to as string) && typeof v.endAt === 'number' ? { from: v.from as string, to: v.to as string, endAt: v.endAt, food: num(v.food) } : null,
+    coin: Math.max(0, num(r.coin, d.coin)), pearls: Math.max(0, Math.floor(num(r.pearls))), food: Math.max(0, num(r.food, d.food)),
+    ship, goods: numMap(r.goods, k => GOODS.some(g => g.id === k), 1e4), cd: numMap(r.cd, ids, 1e16),
+    seen: [...new Set(['harbor', 'reef', 'bay', ...strList(r.seen, ids)])], visited: [...new Set(['harbor', ...strList(r.visited, ids)])],
+    lairs: numMap(r.lairs, ids, 1e6), trips: Math.floor(num(r.trips)), report: strList(r.report).slice(0, 6), hull: 0,
+  };
+  out.hull = clamp(Math.round(num(r.hull, hullMax(out))), 1, hullMax(out));
+  return out;
 }
 
 function sanitizeStones(raw: unknown): Record<string, number> {

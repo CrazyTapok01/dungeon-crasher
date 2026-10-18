@@ -194,6 +194,40 @@ export interface Meta {
   run: RunStats;                    // статистика текущего забега (до перерождения)
   weekly: { week: number; best: number; claimed: number[]; lastDay: string }; // испытание недели
   raid: { at: number; wins: number }; // рейд-босс: когда последний раз вызывали и сколько побед
+  city: CityState;                  // «Ржавый город»
+  sea: SeaState;                    // «Бездонное море»
+}
+
+/** «Ржавый город»: база, экспедиции и исследования (не боевой режим). */
+export interface CityState {
+  open: boolean;
+  res: { metal: number; energy: number; shards: number };
+  at: number;                              // с какого момента копится добыча (мс)
+  bld: Record<string, number>;             // уровни зданий
+  research: Record<string, number>;        // уровни исследований
+  missions: { id: string; endAt: number }[]; // отряды в вылазках
+  gemsBought: number;                      // сколько кристаллов куплено за осколки
+  done: number;                            // выполнено вылазок
+  report: string[];                        // последние события
+}
+
+/** «Бездонное море»: корабль, карта островов, торговля. */
+export interface SeaState {
+  open: boolean;
+  at: string;                              // остров, где стоит корабль
+  voyage: { from: string; to: string; endAt: number; food: number } | null;
+  coin: number;                            // дублоны 🪙
+  pearls: number;                          // жемчуг 🐚
+  food: number;                            // провиант 🍖
+  hull: number;                            // текущая прочность корпуса
+  ship: Record<string, number>;            // уровни частей корабля
+  goods: Record<string, number>;           // груз в трюме
+  cd: Record<string, number>;              // до какого времени остров «отдыхает» (мс)
+  seen: string[];                          // открытые острова
+  visited: string[];                       // посещённые острова
+  lairs: Record<string, number>;           // победы над левиафанами
+  trips: number;                           // плаваний завершено
+  report: string[];
 }
 
 export interface RunStats {

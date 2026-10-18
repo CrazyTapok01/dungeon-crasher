@@ -15,6 +15,11 @@ import {
   parseStone, randomStone, stoneKey, stoneName, stoneTierFor, towerBoss, towerKeysNow, towerMech, towerReward,
 } from '../gameData';
 import type { DailyMod } from '../gameData';
+import {
+  CITY, GOODS, MARKET, MISSIONS, RESEARCH, SEA, SELL_RATE, buildCost, buildingDef, cargoCount, cargoMax, cityPending, crewSkill, fightLair, foodMax, goodPrice,
+  hullMax, island, lv, missionChance, missionMult, neighbors, researchCost, shardGemCost, shipCost, SHIP_MAX, SHIP_PARTS, squadCount, voyageFood, voyageMs, worldBonuses,
+  type ShipPart,
+} from './worldsData';
 import { simulateLadder, type LadderResult } from './ladder';
 import { computeStats, type Extras } from './stats';
 import { applyXp, rollHeroAttack, rollMonsterAttack } from './combat';
@@ -99,6 +104,10 @@ export type Action =
   | { type: 'SET_ELEMENT'; element: Element }
   | { type: 'SET_AUTO_ELEMENT'; value: boolean }
   | { type: 'CRAFT'; slot: ItemSlot; from: Rarity }
+  | { type: 'CITY_OPEN' } | { type: 'CITY_COLLECT' } | { type: 'CITY_BUILD'; id: string } | { type: 'CITY_RESEARCH'; id: string }
+  | { type: 'CITY_MISSION'; id: string } | { type: 'CITY_CLAIM'; index: number } | { type: 'CITY_SELL'; lots: number } | { type: 'CITY_GEM' }
+  | { type: 'SEA_OPEN' } | { type: 'SEA_SAIL'; to: string } | { type: 'SEA_ARRIVE' } | { type: 'SEA_ACT' } | { type: 'SEA_FOOD'; n: number }
+  | { type: 'SEA_REPAIR' } | { type: 'SEA_UP'; part: ShipPart } | { type: 'SEA_TRADE'; good: string; n: number }
   | { type: 'TOWER_RUN' }
   | { type: 'DAILY_RUN' }
   | { type: 'CLOSE_LADDER' }
@@ -136,6 +145,7 @@ export const extrasOf = (s: Pick<GameState, 'heroClass' | 'talents' | 'meta' | '
   pacts: s.world === 'hell' ? s.meta.pacts : {},
   hellRebirths: s.world === 'hell' ? s.meta.hellRebirths : -1,
   collPct: collectionProgress(s.meta).bonus,
+  worldPct: worldBonuses(s.meta.city, s.meta.sea),
   pet: s.meta.activePet && s.meta.pets[s.meta.activePet] > 0 && petAvailable(s.meta, s.meta.activePet)
     ? { id: s.meta.activePet, level: s.meta.pets[s.meta.activePet] * petRankOf(s.meta, s.meta.activePet) } : null,
 });
@@ -816,6 +826,216 @@ function sellItems(state: GameState, items: Item[]): GameState {
 
 // ───────────────────────── редьюсер ─────────────────────────
 
+type WorldAction = Extract<Action, { type: `CITY_${string}` | `SEA_${string}` }>;
+
+const pushReport = (list: string[], text: string) => [text, ...list].slice(0, 6);
+
+/** Ржавый город и Бездонное море: всё, что не связано с боем героя. */
+function doWorld(state: GameState, action: WorldAction): GameState {
+  const now = Date.now();
+  const m0 = state.meta;
+  const toast = (s: GameState, text: string) => emit(withLog(s, text, 'boss'), { type: 'quest', text });
+
+  // ── город: сначала забираем накопленное, чтобы смена уровней не «пересчитывала» прошлое ──
+  if (action.type.startsWith('CITY_')) {
+    if (action.type === 'CITY_OPEN') {
+      if (m0.city.open || m0.maxFloor < CITY.unlockFloor) return state;
+      return toast({ ...state, meta: { ...m0, city: { ...m0.city, open: true, at: now } } }, '🏙️ Ржавый город основан! Рудник и генератор уже работают.');
+    }
+    if (!m0.city.open) return state;
+    const p = cityPending(m0.city, now);
+    let city = { ...m0.city, res: { metal: m0.city.res.metal + p.metal, energy: m0.city.res.energy + p.energy, shards: m0.city.res.shards + p.shards }, at: now };
+    let s: GameState = { ...state, meta: { ...m0, city } };
+    const setCity = (c: typeof city, st: GameState = s): GameState => ({ ...st, meta: { ...st.meta, city: c } });
+    switch (action.type) {
+      case 'CITY_COLLECT':
+        return emit(withLog(setCity(city), `🏙️ Собрано: ⛏️ ${Math.floor(p.metal)} · ⚡ ${Math.floor(p.energy)}${p.shards >= 1 ? ` · 🔷 ${Math.floor(p.shards)}` : ''}`, 'loot'), { type: 'ui', kind: 'buy' });
+      case 'CITY_BUILD': {
+        const d = buildingDef(action.id);
+        const level = lv(city, action.id);
+        if (!d || level >= d.max) return state;
+        const c = buildCost(d, level);
+        if (city.res.metal < c.metal || city.res.energy < c.energy) return setCity(city);
+        city = { ...city, res: { ...city.res, metal: city.res.metal - c.metal, energy: city.res.energy - c.energy }, bld: { ...city.bld, [d.id]: level + 1 } };
+        return emit(withLog(setCity(city), `${d.emoji} ${d.name} → ур. ${level + 1}`, 'ability'), { type: 'ui', kind: 'buy' });
+      }
+      case 'CITY_RESEARCH': {
+        const d = RESEARCH.find(r => r.id === action.id);
+        if (!d || lv(city, 'lab') < 1) return state;
+        const level = city.research[d.id] ?? 0;
+        const cost = researchCost(level);
+        if (level >= d.max || city.res.shards < cost) return setCity(city);
+        city = { ...city, res: { ...city.res, shards: city.res.shards - cost }, research: { ...city.research, [d.id]: level + 1 } };
+        return emit(withLog(setCity(city), `${d.emoji} Исследование «${d.name}» → ур. ${level + 1}`, 'ability'), { type: 'ui', kind: 'buy' });
+      }
+      case 'CITY_MISSION': {
+        const d = MISSIONS.find(x => x.id === action.id);
+        if (!d || lv(city, 'barracks') < d.barracks || city.missions.length >= squadCount(city)) return setCity(city);
+        city = { ...city, missions: [...city.missions, { id: d.id, endAt: now + d.ms }] };
+        return emit(withLog(setCity(city), `${d.emoji} Отряд ушёл: ${d.name}`, 'info'), { type: 'ui', kind: 'equip' });
+      }
+      case 'CITY_CLAIM': {
+        const ms = city.missions[action.index];
+        const d = ms && MISSIONS.find(x => x.id === ms.id);
+        if (!ms || !d || ms.endAt > now) return setCity(city);
+        const ok = Math.random() < missionChance(d, city, m0.rebirths);
+        const k = missionMult(city) * (0.9 + Math.random() * 0.2) * (ok ? 1 : 0.3);
+        const gain = { metal: Math.round(d.metal * k), energy: Math.round(d.energy * k), shards: ok ? Math.round(d.shards * (0.8 + Math.random() * 0.4)) : 0 };
+        city = {
+          ...city, done: city.done + 1, missions: city.missions.filter((_, i) => i !== action.index),
+          res: { metal: city.res.metal + gain.metal, energy: city.res.energy + gain.energy, shards: city.res.shards + gain.shards },
+        };
+        let gems = 0, stone = false;
+        if (ok && Math.random() < d.gem) gems = 1;
+        if (ok && Math.random() < d.stone) stone = true;
+        const text = `${d.emoji} ${d.name}: ${ok ? 'успех' : 'отряд отступил'} · ⛏️${gain.metal} ⚡${gain.energy}${gain.shards ? ` 🔷${gain.shards}` : ''}${gems ? ' 💎1' : ''}`;
+        city = { ...city, report: pushReport(city.report, text) };
+        s = setCity(city, gems ? { ...s, meta: { ...s.meta, gems: s.meta.gems + gems } } : s);
+        if (stone) s = addStone(s, randomStone(stoneTierFor(Math.max(10, s.meta.maxFloor), 'dungeon')), 1);
+        return toast(s, text);
+      }
+      case 'CITY_SELL': {
+        const need = action.lots * MARKET.lot;
+        if (action.lots < 1 || city.res.metal < need) return setCity(city);
+        const gold = need * MARKET.goldPerMetal(s.hero.floor);
+        s = withGold(setCity({ ...city, res: { ...city.res, metal: city.res.metal - need } }), gold);
+        return emit(withLog(s, `⚙️ Продано ${need} металла за ${gold}`, 'loot'), { type: 'ui', kind: 'sell' });
+      }
+      case 'CITY_GEM': {
+        const cost = shardGemCost(city);
+        if (city.gemsBought >= MARKET.gemMax || city.res.shards < cost) return setCity(city);
+        s = setCity({ ...city, gemsBought: city.gemsBought + 1, res: { ...city.res, shards: city.res.shards - cost } });
+        return addGems(s, 1, 'Ржавый город');
+      }
+    }
+    return state;
+  }
+
+  // ── море ──
+  if (action.type === 'SEA_OPEN') {
+    if (m0.sea.open || m0.maxFloor < SEA.unlockFloor) return state;
+    return toast({ ...state, meta: { ...m0, sea: { ...m0.sea, open: true } } }, '🌊 Корабль спущен на воду! Порт Ржавый Якорь ждёт.');
+  }
+  let sea = m0.sea;
+  if (!sea.open) return state;
+  const petLevels = Object.values(m0.pets).reduce((a, b) => a + b, 0);
+  const setSea = (x: typeof sea, st: GameState = state): GameState => ({ ...st, meta: { ...st.meta, sea: x } });
+  const rep = (x: typeof sea, text: string) => ({ ...x, report: pushReport(x.report, text) });
+  const here = island(sea.at);
+
+  switch (action.type) {
+    case 'SEA_SAIL': {
+      if (sea.voyage || !neighbors(sea.at).includes(action.to) || !sea.seen.includes(action.to)) return state;
+      const food = voyageFood(sea.at, action.to);
+      if (sea.food < food || sea.hull <= 0) return state;
+      sea = { ...sea, food: sea.food - food, voyage: { from: sea.at, to: action.to, endAt: now + voyageMs(sea.at, action.to, sea), food } };
+      return emit(setSea(sea), { type: 'ui', kind: 'equip' });
+    }
+    case 'SEA_ARRIVE': {
+      const v = sea.voyage;
+      if (!v || v.endAt > now) return state;
+      const to = island(v.to);
+      let text = `⛵ Прибыли: ${to.emoji} ${to.name}`;
+      let hull = sea.hull;
+      if (Math.random() < 0.12 * to.tier * (1 - crewSkill(sea, petLevels))) {
+        const dmg = Math.min(hull - 1, Math.round(hullMax(sea) * (0.05 + Math.random() * 0.1)));
+        hull -= Math.max(0, dmg);
+        text += ` · шторм: корпус −${Math.max(0, dmg)}`;
+      }
+      sea = rep({
+        ...sea, at: v.to, voyage: null, hull, trips: sea.trips + 1,
+        visited: sea.visited.includes(v.to) ? sea.visited : [...sea.visited, v.to],
+        seen: [...new Set([...sea.seen, v.to, ...neighbors(v.to)])],
+      }, text);
+      return toast(setSea(sea), text);
+    }
+    case 'SEA_FOOD': {
+      if (sea.voyage || here.type !== 'port' || action.n < 1) return state;
+      const n = Math.min(action.n, foodMax(sea) - sea.food, Math.floor(sea.coin / SEA.foodPrice));
+      if (n < 1) return state;
+      return emit(setSea({ ...sea, food: sea.food + n, coin: sea.coin - n * SEA.foodPrice }), { type: 'ui', kind: 'buy' });
+    }
+    case 'SEA_REPAIR': {
+      if (sea.voyage || here.type !== 'port') return state;
+      const miss = hullMax(sea) - sea.hull;
+      const n = Math.min(miss, Math.floor(sea.coin / SEA.repairPer));
+      if (n < 1) return state;
+      return emit(setSea({ ...sea, hull: sea.hull + n, coin: sea.coin - Math.ceil(n * SEA.repairPer) }), { type: 'ui', kind: 'buy' });
+    }
+    case 'SEA_UP': {
+      const part = SHIP_PARTS.find(p => p.id === action.part);
+      const level = sea.ship[action.part] ?? 1;
+      if (!part || sea.voyage || level >= SHIP_MAX) return state;
+      const c = shipCost(part.base, level);
+      if (sea.coin < c.coin || sea.pearls < c.pearls) return state;
+      const before = hullMax(sea);
+      sea = { ...sea, coin: sea.coin - c.coin, pearls: sea.pearls - c.pearls, ship: { ...sea.ship, [part.id]: level + 1 } };
+      if (part.id === 'hull') sea = { ...sea, hull: sea.hull + hullMax(sea) - before };
+      return emit(withLog(setSea(sea), `${part.emoji} ${part.name} → ур. ${level + 1}`, 'ability'), { type: 'ui', kind: 'buy' });
+    }
+    case 'SEA_TRADE': {
+      if (sea.voyage || here.type !== 'port' || !GOODS.some(g => g.id === action.good) || action.n === 0) return state;
+      const price = goodPrice(here.id, action.good, now);
+      const have = sea.goods[action.good] ?? 0;
+      if (action.n > 0) {
+        const n = Math.min(action.n, cargoMax(sea) - cargoCount(sea), Math.floor(sea.coin / price));
+        if (n < 1) return state;
+        return emit(setSea({ ...sea, coin: sea.coin - n * price, goods: { ...sea.goods, [action.good]: have + n } }), { type: 'ui', kind: 'buy' });
+      }
+      const n = Math.min(-action.n, have);
+      if (n < 1) return state;
+      return emit(setSea({ ...sea, coin: sea.coin + n * Math.floor(price * SELL_RATE), goods: { ...sea.goods, [action.good]: have - n } }), { type: 'ui', kind: 'sell' });
+    }
+    case 'SEA_ACT': {
+      if (sea.voyage || here.type === 'port' || (sea.cd[here.id] ?? 0) > now) return state;
+      const cs = crewSkill(sea, petLevels);
+      const t = here.tier;
+      const roll = () => 0.7 + Math.random() * 0.6;
+      let s: GameState = state;
+      let text = '';
+      if (here.type === 'treasure') {
+        const coin = Math.round(210 * Math.pow(t, 1.8) * roll() * (1 + cs));
+        const pearl = Math.random() < 0.12 * t ? 1 : 0;
+        sea = { ...sea, coin: sea.coin + coin, pearls: sea.pearls + pearl, cd: { ...sea.cd, [here.id]: now + SEA.cooldownMs.treasure } };
+        text = `${here.emoji} Раскопки: 🪙${coin}${pearl ? ' 🐚1' : ''}`;
+        s = setSea(rep(sea, text));
+        if (Math.random() < 0.06 * t) s = addStone(s, randomStone(Math.min(3, t - 1 || 1)), 1);
+      } else if (here.type === 'wreck') {
+        let hull = sea.hull;
+        let dmgText = '';
+        if (Math.random() < (1 - cs * 0.8) * (0.35 + 0.1 * t)) {
+          const dmg = Math.min(hull - 1, Math.round(hullMax(sea) * (0.08 + Math.random() * 0.12) * (0.6 + 0.2 * t)));
+          hull -= Math.max(0, dmg);
+          dmgText = ` · корпус −${Math.max(0, dmg)}`;
+        }
+        const coin = Math.round(360 * Math.pow(t, 1.8) * roll() * (1 + cs));
+        const pearl = 1 + (t >= 3 ? 1 : 0);
+        sea = { ...sea, hull, coin: sea.coin + coin, pearls: sea.pearls + pearl, cd: { ...sea.cd, [here.id]: now + SEA.cooldownMs.wreck } };
+        text = `${here.emoji} Обломки: 🪙${coin} 🐚${pearl}${dmgText}`;
+        s = setSea(rep(sea, text));
+      } else if (here.lair) {
+        const r = fightLair(sea, here.lair, petLevels, Math.random);
+        if (r.win) {
+          const first = (sea.lairs[here.id] ?? 0) === 0;
+          const coin = Math.round(1200 * t * t * roll());
+          const pearls = 2 + t;
+          const gems = first ? 2 : Math.random() < 0.12 ? 1 : 0;
+          sea = { ...sea, hull: Math.max(1, r.hullLeft), coin: sea.coin + coin, pearls: sea.pearls + pearls, lairs: { ...sea.lairs, [here.id]: (sea.lairs[here.id] ?? 0) + 1 }, cd: { ...sea.cd, [here.id]: now + SEA.cooldownMs.lair } };
+          text = `${here.emoji} ${here.lair.name} повержен за ${r.rounds} раундов! 🪙${coin} 🐚${pearls}${gems ? ` 💎${gems}` : ''}${first ? ' · трофей +3% к атаке и HP' : ''}`;
+          s = setSea(rep(sea, text), gems ? { ...state, meta: { ...state.meta, gems: state.meta.gems + gems } } : state);
+          s = addStone(s, randomStone(Math.min(3, t - 1)), 1);
+        } else {
+          sea = { ...sea, hull: Math.max(1, Math.round(hullMax(sea) * 0.15)), coin: Math.floor(sea.coin * 0.8), cd: { ...sea.cd, [here.id]: now + 3600000 } };
+          text = `${here.emoji} ${here.lair.name} оказался сильнее: корабль едва ушёл, потеряна часть монет`;
+          s = setSea(rep(sea, text));
+        }
+      }
+      return toast(s, text);
+    }
+  }
+  return state;
+}
+
 function applyHeroMods(base: HeroStats, mod: DailyMod): HeroStats {
   const h = mod.hero ?? {};
   return {
@@ -1253,6 +1473,12 @@ function reduce(state: GameState, action: Action): GameState {
         s = withLog(s, `🌟 Награда недели: ${it.emoji} ${it.name} (${RARITY_NAME[it.rarity]})`, 'loot');
       }
       return emit(withLog(s, `📅 Рубеж ${r.need}: +${r.gems} 💎, +${r.souls} 👻`, 'boss'), { type: 'quest', text: `📅 Неделя ${r.need}: +${r.gems} 💎 +${r.souls} 👻` });
+    }
+
+    case 'CITY_OPEN': case 'CITY_COLLECT': case 'CITY_BUILD': case 'CITY_RESEARCH': case 'CITY_MISSION': case 'CITY_CLAIM': case 'CITY_SELL': case 'CITY_GEM':
+    case 'SEA_OPEN': case 'SEA_SAIL': case 'SEA_ARRIVE': case 'SEA_ACT': case 'SEA_FOOD': case 'SEA_REPAIR': case 'SEA_UP': case 'SEA_TRADE': {
+      const out = doWorld(fresh, action);
+      return out === fresh ? state : out;
     }
 
     case 'TOWER_RUN': {
