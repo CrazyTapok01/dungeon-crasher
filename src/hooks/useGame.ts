@@ -3,7 +3,8 @@ import type { AbilityId, ClassId, PetId, WorldId, Element, Item, ItemSlot, Rarit
 import { BANNER_DURATION_MS, COMBAT_TICK_MS, RESPAWN_DELAY_MS, SKILLS, skillMaxLevel, skillUnlocked } from '../gameData';
 import { computeStats } from '../game/stats';
 import { extrasOf, gameReducer, loadInitialState } from '../game/reducer';
-import { clearSave, saveGame } from '../game/save';
+import { clearSave, exportSave, importSave, saveGame } from '../game/save';
+import { cancelAllNotifications, scheduleNotifications } from '../game/notify';
 import { playForEvent } from '../game/audio';
 
 /**
@@ -102,6 +103,16 @@ export function useGame() {
     return () => document.removeEventListener('visibilitychange', onVisibility);
   }, []);
 
+  // Уведомления в приложении: ставим при сворачивании, снимаем при возвращении
+  useEffect(() => {
+    const onVis = () => {
+      const st = latest.current;
+      if (document.hidden) { if (st.settings.notify) void scheduleNotifications(st.meta); } else void cancelAllNotifications();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, []);
+
   // dispatch стабилен, поэтому набор действий создаём один раз
   const actions = useMemo(() => ({
     buySkill: (id: SkillId) => dispatch({ type: 'BUY_SKILL', id }),
@@ -126,6 +137,10 @@ export function useGame() {
     travel: (to: WorldId) => dispatch({ type: 'TRAVEL', to }),
     openHell: () => dispatch({ type: 'OPEN_HELL' }),
     buyGem: (id: string) => dispatch({ type: 'BUY_GEM', id }),
+    setAuto: (key: 'autoEnhance' | 'autoCraft' | 'notify', value: number | Rarity | null | boolean) => dispatch({ type: 'SET_AUTO', key, value }),
+    raidStart: () => dispatch({ type: 'RAID_START' }),
+    weeklyRun: () => dispatch({ type: 'WEEKLY_RUN' }),
+    claimWeekly: (need: number) => dispatch({ type: 'CLAIM_WEEKLY', need }),
     towerRun: () => dispatch({ type: 'TOWER_RUN' }),
     dailyRun: () => dispatch({ type: 'DAILY_RUN' }),
     closeLadder: () => dispatch({ type: 'CLOSE_LADDER' }),
@@ -152,5 +167,11 @@ export function useGame() {
     dispatch({ type: 'RESET' });
   };
 
-  return { state, stats, skills, autoFight, setAutoFight, resetGame, ...actions };
+  const exportCode = () => {
+    const st = latest.current;
+    saveGame({ hero: st.hero, skillLevels: st.skillLevels, equipped: st.equipped, inventory: st.inventory, meta: st.meta, upgradeCounts: st.upgradeCounts, settings: st.settings, heroClass: st.heroClass, talents: st.talents, world: st.world, offRun: st.offRun });
+    return exportSave();
+  };
+
+  return { state, stats, skills, autoFight, setAutoFight, resetGame, exportCode, importCode: importSave, ...actions };
 }

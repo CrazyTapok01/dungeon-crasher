@@ -11,9 +11,10 @@ import {
   deathGoldKept, emptyCooldowns, emptyMeta, emptySkillLevels, emptyUpgradeCounts, generateItem,
   generateMonster, FARM, FARMS, HELL_REBIRTH, farmCost, farmPending, farmRate, hellRebirthCost, PET_REBIRTH, petAvailable, petRankOf, HELL_PACTS, SOUL_SHOP, altarCost, altarSouls, craftGoldCost, soulUpLevel, soulUpgradeCost, soulsAvailable, GEM, GEM_SHOP, HELL, PET_CRATES, PET_GEAR_MULT, PET_SLOTS, WORLDS, gemLevel, gemUpgradeCost, petCrateGoldCost, petGearMult, EGG, PET_MAX, PETS, TALENTS, TALENT_MAX, petDef, spentTalents, talentBonus, talentPoints, CLASSES, CLASS_BONUS, CRAFT_RECIPES, counterOf, craftItem, craftGroups, ENHANCE, dailyPreview, enhanceCost, enhanceChance, sellPrice, todayKey, inventoryLimit, RELICS, RELIC_DROP, RELIC_MAX, QUEST_INFO, fillQuests, questProgress, itemScore, junkItems, skillCost, skillMaxLevel, skillUnlocked,
   soulsForFloor, upgradeAmount, upgradeCost,
-  COLL_REWARDS, DAILY_CHALLENGE, STONE_DROP, STONE_SHOP, MAX_SOCKETS, TOWER, collectionProgress, dailyFoe, dailyModFor, dailyReward, foundKeysOf, monsterKey,
+  RAID, WEEKLY, WEEKLY_REWARDS, makeSetItem, raidBoss, raidReward, weekKey, weeklyFoe, weeklyMod, COLL_REWARDS, DAILY_CHALLENGE, STONE_DROP, STONE_SHOP, MAX_SOCKETS, TOWER, collectionProgress, dailyFoe, dailyModFor, dailyReward, foundKeysOf, monsterKey,
   parseStone, randomStone, stoneKey, stoneName, stoneTierFor, towerBoss, towerKeysNow, towerMech, towerReward,
 } from '../gameData';
+import type { DailyMod } from '../gameData';
 import { simulateLadder, type LadderResult } from './ladder';
 import { computeStats, type Extras } from './stats';
 import { applyXp, rollHeroAttack, rollMonsterAttack } from './combat';
@@ -61,6 +62,7 @@ export interface GameState {
   showFloorBanner: boolean;
   offlineReport: OfflineReport | null;
   chestResult: Item | null; // что выпало из последнего сундука
+  raidPhase: number;           // фаза рейд-босса (0 — рейда нет)
   ladder: LadderResult | null; // итог последнего забега по Башне или ежедневному испытанию
 }
 
@@ -100,6 +102,10 @@ export type Action =
   | { type: 'TOWER_RUN' }
   | { type: 'DAILY_RUN' }
   | { type: 'CLOSE_LADDER' }
+  | { type: 'WEEKLY_RUN' }
+  | { type: 'CLAIM_WEEKLY'; need: number }
+  | { type: 'RAID_START' }
+  | { type: 'SET_AUTO'; key: 'autoEnhance' | 'autoCraft' | 'notify'; value: number | Rarity | null | boolean }
   | { type: 'BUY_STONE' }
   | { type: 'MERGE_STONE'; key: string }
   | { type: 'SOCKET'; itemId: string; key: string }
@@ -168,6 +174,11 @@ function healHero(s: GameState, amount: number, source: 'lifesteal' | 'regen' | 
 function damageHero(s: GameState, dmg: number): GameState {
   const hp = Math.max(0, s.hero.hp - dmg);
   let next: GameState = { ...s, hero: { ...s.hero, hp } };
+  if (hp === 0 && !s.isDead && s.monster.raid) {
+    next = withLog({ ...next, hero: { ...next.hero, hp: statsOf(next).maxHp } }, '☠️ Рейд провален: босс оказался сильнее. Ты отступаешь невредимым.', 'death');
+    next = emit(next, { type: 'quest', text: '☠️ Рейд провален' });
+    return spawnMonster({ ...next, raidPhase: 0 });
+  }
   if (hp === 0 && !s.isDead) {
     next = { ...next, isDead: true, meta: { ...next.meta, deaths: next.meta.deaths + 1 } };
     next = withLog(next, '💀 Ты повержен! Возрождение...', 'death');
@@ -224,7 +235,7 @@ function createState(save: SaveData | null): GameState {
     inventory: save?.inventory ?? [],
     meta: fillQuests(world === 'dungeon' ? { ...meta, maxFloor: Math.max(meta.maxFloor, hero.floor) } : meta),
     upgradeCounts: save?.upgradeCounts ?? emptyUpgradeCounts(),
-    settings: save?.settings ?? { autoAbilities: true, autoElement: false, autoSell: [] },
+    settings: save?.settings ?? { autoAbilities: true, autoElement: false, autoSell: [], autoEnhance: 0, autoCraft: null, notify: false },
     heroClass: save?.heroClass ?? null,
     talents: save?.talents ?? {},
     world: save?.world ?? 'dungeon',
@@ -244,6 +255,7 @@ function createState(save: SaveData | null): GameState {
     offlineReport: null,
     chestResult: null,
     ladder: null,
+    raidPhase: 0,
   };
 
   // Если сохранились на нуле HP — стартуем хотя бы с 1 HP
@@ -391,6 +403,7 @@ function hitMonster(
     : withLog(s, `⚔️ Ты наносишь ${roll.dmg} урона ${monster.name}`, 'dmg');
   if (roll.lifestealHeal > 0) s = healHero(s, roll.lifestealHeal, 'lifesteal');
 
+  if (s.monsterHp > 0 && s.monster.raid) s = raidPhases(s);
   if (s.monsterHp === 0) return defeatMonster(s);
 
   // «Шипастый» возвращает часть урона (но не добивает героя)
@@ -508,6 +521,7 @@ function monsterAttack(state: GameState): GameState {
 
 /** Монстр убит: награда, лут, переход на следующую стадию и новый монстр. */
 function defeatMonster(state: GameState): GameState {
+  if (state.monster.raid) return defeatRaid(state);
   const { monster } = state;
   const stats = statsOf(state);
   let s = withLog(state, `☠️ ${monster.name} повержен!`);
@@ -582,6 +596,8 @@ function defeatMonster(state: GameState): GameState {
     s = healHero(s, DROP.potionHeal, 'potion');
   }
 
+  s = autoMaintain(s);
+
   // 5. следующая стадия или следующий этаж
   const { floor, stage } = s.hero;
   if (stage >= STAGES_PER_FLOOR) {
@@ -608,6 +624,61 @@ function defeatMonster(state: GameState): GameState {
 
 /** Бонус «Печати удачи» к шансам реликвий и яиц. */
 const luck = (s: GameState): number => 1 + gemLevel(s.meta.gemUps, 'luck') * 0.1;
+
+/** Фазы рейд-босса: на 66% HP — ярость, на 33% — исцеление. */
+function raidPhases(s: GameState): GameState {
+  const frac = s.monsterHp / s.monster.hp;
+  if (frac <= 0.66 && s.raidPhase < 2) {
+    s = { ...s, raidPhase: 2, monsterAi: { ...s.monsterAi, enraged: true } };
+    s = emit(withLog(s, `🔥 Фаза 2: ${s.monster.name} впадает в ярость!`, 'boss'), { type: 'enrage' }, { type: 'quest', text: '🔥 Рейд: фаза 2 — ярость!' });
+  }
+  if (frac <= 0.33 && s.raidPhase < 3) {
+    const heal = Math.round(s.monster.hp * RAID.healFrac);
+    s = { ...s, raidPhase: 3, monsterHp: Math.min(s.monster.hp, s.monsterHp + heal), monsterAi: { ...s.monsterAi, charging: true } };
+    s = emit(withLog(s, `💚 Фаза 3: ${s.monster.name} исцеляется на ${heal} и готовит мощный удар!`, 'boss'), { type: 'monster_regen', amount: heal }, { type: 'quest', text: '💚 Рейд: фаза 3 — исцеление!' });
+  }
+  return s;
+}
+
+function defeatRaid(state: GameState): GameState {
+  const { monster } = state;
+  const floor = state.hero.floor;
+  const r = raidReward(floor);
+  const { hero: afterXp } = applyXp(state.hero, monster.xp);
+  let s: GameState = {
+    ...state,
+    hero: { ...afterXp, gold: afterXp.gold + monster.gold, kills: afterXp.kills + 1 },
+    meta: { ...state.meta, souls: state.meta.souls + r.souls, gems: state.meta.gems + r.gems, bossKills: state.meta.bossKills + 1, raid: { ...state.meta.raid, wins: state.meta.raid.wins + 1 } },
+  };
+  s = withLog(s, `🏆 РЕЙД ПРОЙДЕН: ${monster.name}! +${r.souls} душ, +${r.gems} кристаллов, +${monster.gold} золота`, 'boss');
+  s = emit(s, { type: 'monster_killed', emoji: monster.emoji, boss: true, elite: false, gold: monster.gold, xp: monster.xp }, { type: 'quest', text: `🏆 Рейд пройден! +${r.souls} 👻 +${r.gems} 💎` });
+  s = addStone(s, randomStone(r.stoneTier), 1);
+  s = dropItem(s, generateItem(floor, true, 'epic', 'dungeon'));
+  if (Math.random() < 0.3) s = dropItem(s, makeSetItem('celestial', 'legendary', floor));
+  return spawnMonster({ ...s, raidPhase: 0 });
+}
+
+/** Авто-заточка и авто-крафт по настройкам (золото не тратится «в ноль»). */
+function autoMaintain(s: GameState): GameState {
+  const { autoEnhance, autoCraft } = s.settings;
+  const run = (st: GameState, next: GameState): GameState => (next === st ? st : { ...next, events: st.events });
+  if (autoCraft) {
+    for (const g of craftGroups(s.inventory)) {
+      if (RARITY_ORDER.indexOf(g.from) > RARITY_ORDER.indexOf(autoCraft)) continue;
+      const rec = CRAFT_RECIPES.find(r => r.from === g.from);
+      if (!rec || s.hero.gold < craftGoldCost(rec, s.hero.floor) * 2) continue;
+      s = run(s, doCraft(s, { slot: g.slot, from: g.from }));
+    }
+  }
+  if (autoEnhance > 0) {
+    for (const slot of ['weapon', 'armor', 'amulet'] as const) {
+      const it = s.equipped[slot];
+      if (!it || (it.plus ?? 0) >= autoEnhance || s.hero.gold < enhanceCost(it, s.hero.floor) * 2) continue;
+      s = run(s, doEnhance(s, { slot }));
+    }
+  }
+  return s;
+}
 
 function addStone(s: GameState, key: string, n: number): GameState {
   s = { ...s, meta: { ...s.meta, stones: { ...s.meta.stones, [key]: (s.meta.stones[key] ?? 0) + n } } };
@@ -745,6 +816,57 @@ function sellItems(state: GameState, items: Item[]): GameState {
 
 // ───────────────────────── редьюсер ─────────────────────────
 
+function applyHeroMods(base: HeroStats, mod: DailyMod): HeroStats {
+  const h = mod.hero ?? {};
+  return {
+    ...base,
+    atk: Math.round(base.atk * (h.atk ?? 1)), def: Math.round(base.def * (h.def ?? 1)), maxHp: Math.round(base.maxHp * (h.hp ?? 1)),
+    critChance: h.noCrit ? 0 : base.critChance, dodge: h.noDodge ? 0 : base.dodge,
+  };
+}
+
+function doCraft(state: GameState, action: { slot: ItemSlot; from: Rarity }): GameState {
+  const fresh = state.events === NO_EVENTS ? state : { ...state, events: NO_EVENTS };
+      const rec = CRAFT_RECIPES.find(r => r.from === action.from);
+      const group = craftGroups(state.inventory).find(g => g.slot === action.slot && g.from === action.from);
+      if (!rec || !group || group.take.length < rec.need) return state;
+      const cost = craftGoldCost(rec, state.hero.floor);
+      if (state.hero.gold < cost) return state;
+      const mats = group.take;
+      const ids = new Set(mats.map(m => m.id));
+      const paid = withGold({ ...fresh }, -cost);
+      if (Math.random() >= rec.chance) {
+        // неудача: остаётся лучшая из материалов, остальные сгорают
+        const keep = mats[mats.length - 1];
+        const lost = new Set(mats.filter(m => m.id !== keep.id).map(m => m.id));
+        const txt = `🔥 Крафт сорвался: сгорело ${lost.size}, «${keep.name}» уцелел`;
+        const s = { ...paid, inventory: state.inventory.filter(i => !lost.has(i.id)) };
+        return emit(emit(withLog(s, txt, 'loot'), { type: 'ui', kind: 'fail' }), { type: 'quest', text: txt });
+      }
+      const result = craftItem(mats, rec.to);
+      const s = noteFound({ ...paid, inventory: [result, ...state.inventory.filter(i => !ids.has(i.id))] }, result);
+      const done = emit(withLog(s, `🔨 Создано: ${result.name} (${RARITY_NAME[rec.to]})`, 'loot'), { type: 'loot', rarity: rec.to });
+      return rec.to === 'legendary' || rec.to === 'divine' ? emit(done, { type: 'quest', text: `🔨 ${RARITY_NAME[rec.to]}: ${result.name}!` }) : done;
+    
+}
+
+function doEnhance(state: GameState, action: { slot: ItemSlot }): GameState {
+  const fresh = state.events === NO_EVENTS ? state : { ...state, events: NO_EVENTS };
+      const item = state.equipped[action.slot];
+      if (!item || (item.plus ?? 0) >= ENHANCE.max) return state;
+      const cost = enhanceCost(item, state.hero.floor);
+      if (state.hero.gold < cost) return state;
+      if (Math.random() >= enhanceChance(item.plus ?? 0)) {
+        const f = withGold({ ...fresh }, -cost);
+        const txt = `💥 Заточка не удалась! ${item.name.replace(/\s*\+\d+$/, '')} остался +${item.plus ?? 0}`;
+        return emit(emit(withLog(f, `${txt} (потеряно ${cost})`, 'loot'), { type: 'ui', kind: 'fail' }), { type: 'quest', text: txt });
+      }
+      const upgraded: Item = { ...item, plus: (item.plus ?? 0) + 1 };
+      const s = withGold({ ...fresh, equipped: { ...state.equipped, [action.slot]: upgraded } }, -cost);
+      return emit(withLog(s, `⚒️ ${item.name} заточен до +${upgraded.plus}!`, 'loot'), { type: 'ui', kind: 'buy' });
+    
+}
+
 function reduce(state: GameState, action: Action): GameState {
   // Большинство действий начинают «с чистого листа» событий для анимаций
   const fresh: GameState = state.events === NO_EVENTS ? state : { ...state, events: NO_EVENTS };
@@ -832,28 +954,8 @@ function reduce(state: GameState, action: Action): GameState {
       return { ...fresh, settings, heroElement: action.value ? counterOf(state.monster.element) : state.heroElement };
     }
 
-    case 'CRAFT': {
-      const rec = CRAFT_RECIPES.find(r => r.from === action.from);
-      const group = craftGroups(state.inventory).find(g => g.slot === action.slot && g.from === action.from);
-      if (!rec || !group || group.take.length < rec.need) return state;
-      const cost = craftGoldCost(rec, state.hero.floor);
-      if (state.hero.gold < cost) return state;
-      const mats = group.take;
-      const ids = new Set(mats.map(m => m.id));
-      const paid = withGold({ ...fresh }, -cost);
-      if (Math.random() >= rec.chance) {
-        // неудача: остаётся лучшая из материалов, остальные сгорают
-        const keep = mats[mats.length - 1];
-        const lost = new Set(mats.filter(m => m.id !== keep.id).map(m => m.id));
-        const txt = `🔥 Крафт сорвался: сгорело ${lost.size}, «${keep.name}» уцелел`;
-        const s = { ...paid, inventory: state.inventory.filter(i => !lost.has(i.id)) };
-        return emit(emit(withLog(s, txt, 'loot'), { type: 'ui', kind: 'fail' }), { type: 'quest', text: txt });
-      }
-      const result = craftItem(mats, rec.to);
-      const s = noteFound({ ...paid, inventory: [result, ...state.inventory.filter(i => !ids.has(i.id))] }, result);
-      const done = emit(withLog(s, `🔨 Создано: ${result.name} (${RARITY_NAME[rec.to]})`, 'loot'), { type: 'loot', rarity: rec.to });
-      return rec.to === 'legendary' || rec.to === 'divine' ? emit(done, { type: 'quest', text: `🔨 ${RARITY_NAME[rec.to]}: ${result.name}!` }) : done;
-    }
+    case 'CRAFT':
+      return doCraft(state, action);
 
     case 'PET_REBIRTH': {
       const id = action.id;
@@ -1033,20 +1135,8 @@ function reduce(state: GameState, action: Action): GameState {
       return action.id ? emit(withLog(s, `${petDef(action.id).emoji} ${petDef(action.id).name} теперь с тобой`), { type: 'ui', kind: 'equip' }) : s;
     }
 
-    case 'ENHANCE': {
-      const item = state.equipped[action.slot];
-      if (!item || (item.plus ?? 0) >= ENHANCE.max) return state;
-      const cost = enhanceCost(item, state.hero.floor);
-      if (state.hero.gold < cost) return state;
-      if (Math.random() >= enhanceChance(item.plus ?? 0)) {
-        const f = withGold({ ...fresh }, -cost);
-        const txt = `💥 Заточка не удалась! ${item.name.replace(/\s*\+\d+$/, '')} остался +${item.plus ?? 0}`;
-        return emit(emit(withLog(f, `${txt} (потеряно ${cost})`, 'loot'), { type: 'ui', kind: 'fail' }), { type: 'quest', text: txt });
-      }
-      const upgraded: Item = { ...item, plus: (item.plus ?? 0) + 1 };
-      const s = withGold({ ...fresh, equipped: { ...state.equipped, [action.slot]: upgraded } }, -cost);
-      return emit(withLog(s, `⚒️ ${item.name} заточен до +${upgraded.plus}!`, 'loot'), { type: 'ui', kind: 'buy' });
-    }
+    case 'ENHANCE':
+      return doEnhance(state, action);
 
     case 'CLAIM_DAILY': {
       const d = dailyPreview(state.meta);
@@ -1114,6 +1204,57 @@ function reduce(state: GameState, action: Action): GameState {
     case 'CLOSE_LADDER':
       return { ...state, ladder: null };
 
+    case 'SET_AUTO': {
+      const settings = { ...state.settings };
+      if (action.key === 'autoEnhance') settings.autoEnhance = Number(action.value) || 0;
+      else if (action.key === 'autoCraft') settings.autoCraft = (action.value as Rarity | null) ?? null;
+      else settings.notify = action.value === true;
+      return { ...fresh, settings };
+    }
+
+    case 'RAID_START': {
+      const now = Date.now();
+      if (state.world !== 'dungeon' || state.isDead || state.monster.raid || now - state.meta.raid.at < RAID.cooldownMs) return state;
+      const monster = raidBoss(statsOf(state), state.hero.floor, state.meta.rebirths);
+      let s: GameState = {
+        ...fresh, monster, monsterId: newId(), monsterHp: monster.hp, monsterAi: freshAi(), turn: 'hero', raidPhase: 1,
+        hero: { ...state.hero, hp: statsOf(state).maxHp }, heroElement: s0Element(fresh, monster), meta: { ...state.meta, raid: { ...state.meta.raid, at: now } },
+      };
+      s = withLog(s, `⚠️ РЕЙД! Появился ${monster.name}. Три фазы: на 66% ярость, на 33% исцеление. Если погибнешь — отступишь без потерь.`, 'boss');
+      return emit(s, { type: 'boss_spawn' });
+    }
+
+    case 'WEEKLY_RUN': {
+      if (state.world !== 'dungeon' || state.isDead) return state;
+      const day = todayKey();
+      const wk = weekKey();
+      const w = state.meta.weekly.week === wk ? state.meta.weekly : { week: wk, best: 0, claimed: [] as number[], lastDay: '' };
+      if (w.lastDay === day) return state;
+      const mod = weeklyMod(wk);
+      const stats = applyHeroMods(statsOf(state), mod);
+      const { steps, cleared } = simulateLadder({
+        stats, element: state.heroElement, count: WEEKLY.foes, healFrac: WEEKLY.heal,
+        foe: i => weeklyFoe(i, state.meta.maxFloor), heroDot: mod.hero?.dot, foeMul: mod.foe,
+      });
+      const best = Math.max(w.best, cleared);
+      const lines = [`Лучший результат недели: ${best}/${WEEKLY.foes}`, 'Награды за рубежи забирай в панели «Неделя».'];
+      const s = { ...fresh, meta: { ...state.meta, weekly: { ...w, best, lastDay: day } }, ladder: { kind: 'weekly' as const, steps, cleared, lines } };
+      return emit(withLog(s, `📅 Испытание недели: ${cleared}/${WEEKLY.foes} (рекорд недели ${best})`, 'boss'), { type: 'ui', kind: 'buy' });
+    }
+
+    case 'CLAIM_WEEKLY': {
+      const r = WEEKLY_REWARDS.find(x => x.need === action.need);
+      const w = state.meta.weekly;
+      if (!r || w.week !== weekKey() || w.best < r.need || w.claimed.includes(r.need)) return state;
+      let s: GameState = { ...fresh, meta: { ...state.meta, gems: state.meta.gems + r.gems, souls: state.meta.souls + r.souls, weekly: { ...w, claimed: [...w.claimed, r.need] } } };
+      if (r.piece) {
+        const it = makeSetItem('celestial', r.piece.rarity, Math.max(state.hero.floor, 10));
+        s = noteFound({ ...s, inventory: [it, ...s.inventory] }, it);
+        s = withLog(s, `🌟 Награда недели: ${it.emoji} ${it.name} (${RARITY_NAME[it.rarity]})`, 'loot');
+      }
+      return emit(withLog(s, `📅 Рубеж ${r.need}: +${r.gems} 💎, +${r.souls} 👻`, 'boss'), { type: 'quest', text: `📅 Неделя ${r.need}: +${r.gems} 💎 +${r.souls} 👻` });
+    }
+
     case 'TOWER_RUN': {
       if (state.world !== 'dungeon' || state.isDead) return state;
       const now = Date.now();
@@ -1147,13 +1288,8 @@ function reduce(state: GameState, action: Action): GameState {
       const day = todayKey();
       if (state.meta.challenge.last === day) return state;
       const mod = dailyModFor(day);
-      const base = statsOf(state);
       const h = mod.hero ?? {};
-      const stats = {
-        ...base,
-        atk: Math.round(base.atk * (h.atk ?? 1)), def: Math.round(base.def * (h.def ?? 1)), maxHp: Math.round(base.maxHp * (h.hp ?? 1)),
-        critChance: h.noCrit ? 0 : base.critChance, dodge: h.noDodge ? 0 : base.dodge,
-      };
+      const stats = applyHeroMods(statsOf(state), mod);
       const { steps, cleared } = simulateLadder({
         stats, element: state.heroElement, count: DAILY_CHALLENGE.foes, healFrac: 0,
         foe: i => dailyFoe(i, state.meta.maxFloor), heroDot: h.dot, foeMul: mod.foe,

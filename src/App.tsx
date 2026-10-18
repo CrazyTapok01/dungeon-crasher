@@ -155,7 +155,7 @@ export default function App() {
           <InventoryPanel
             inventory={state.inventory} limit={inventoryLimit(state.meta.rebirths)} equipped={state.equipped}
             onEquip={game.equipItem} onSell={game.sellItem}
-            onEquipBest={game.equipBest} onSellJunk={game.sellJunk} gold={hero.gold} onEnhance={game.enhance} heroClass={state.heroClass} autoSell={state.settings.autoSell} onAutoSell={game.setAutoSell}
+            onEquipBest={game.equipBest} onSellJunk={game.sellJunk} gold={hero.gold} onEnhance={game.enhance} heroClass={state.heroClass} autoSell={state.settings.autoSell} onAutoSell={game.setAutoSell} stones={state.meta.stones} onSocket={game.socket}
           />
         )}
         {tab === 'craft' && (

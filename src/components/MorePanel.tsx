@@ -12,6 +12,9 @@ import type { GameState } from '../game/reducer';
 import type { useGame } from '../hooks/useGame';
 import ExtrasPanel from './ExtrasPanel';
 import Tip from './Tip';
+import { useState } from 'react';
+import { AUTO_CRAFT_STEPS, AUTO_ENHANCE_STEPS, RARITY_NAME } from '../gameData';
+import { enableNotifications } from '../game/notify';
 import { ACHIEVEMENTS, PERKS, PRESTIGE, soulsForFloor } from '../gameData';
 
 interface Props {
@@ -36,6 +39,41 @@ interface Props {
   onToggleAuto: () => void;
   state: GameState;
   game: ReturnType<typeof useGame>;
+}
+
+/** Перенос сохранения: код копируется и вставляется на другом устройстве или в APK. */
+function SaveTransfer({ game }: { game: ReturnType<typeof useGame> }) {
+  const [code, setCode] = useState<string | null>(null);
+  const [input, setInput] = useState('');
+  const [msg, setMsg] = useState('');
+  const [open, setOpen] = useState(false);
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(code ?? ''); setMsg('Скопировано!'); } catch { setMsg('Выдели код вручную и скопируй'); }
+  };
+  return (
+    <div className="mt-2 rounded-lg border border-purple-800/60 p-2 bg-black/20">
+      <div className="grid grid-cols-2 gap-2">
+        <button onClick={() => { setCode(game.exportCode()); setOpen(true); setMsg(''); }} className="btn-fantasy py-2 rounded-lg text-xs font-bold">📤 Код сохранения</button>
+        <button onClick={() => { setOpen(true); setCode(null); setMsg(''); }} className="btn-fantasy py-2 rounded-lg text-xs font-bold">📥 Загрузить</button>
+      </div>
+      {open && code !== null && (
+        <div className="mt-2">
+          <textarea readOnly value={code} onFocus={e => e.currentTarget.select()} className="w-full h-20 text-[10px] bg-black/50 text-purple-100 rounded p-1 border border-purple-800" />
+          <button onClick={copy} className="btn-purple w-full py-1.5 rounded-lg text-xs font-bold mt-1">Копировать</button>
+        </div>
+      )}
+      {open && code === null && (
+        <div className="mt-2">
+          <textarea value={input} onChange={e => setInput(e.target.value)} placeholder="Вставь код сохранения (начинается с DC1:)" className="w-full h-20 text-[10px] bg-black/50 text-purple-100 rounded p-1 border border-purple-800" />
+          <button disabled={!input.trim()} onClick={() => {
+            if (!window.confirm('Текущий прогресс на этом устройстве будет заменён загруженным. Продолжить?')) return;
+            if (game.importCode(input)) location.reload(); else setMsg('Код не подходит или повреждён');
+          }} className="btn-purple w-full py-1.5 rounded-lg text-xs font-bold mt-1 disabled:opacity-50">Загрузить сохранение</button>
+        </div>
+      )}
+      {msg && <p className="text-[11px] text-amber-300 text-center mt-1">{msg}</p>}
+    </div>
+  );
 }
 
 const GFX_LABEL: Record<GfxSetting, string> = { auto: 'Авто', high: 'Высокая', low: 'Низкая' };
@@ -151,6 +189,33 @@ export default function MorePanel({ hero, meta, muted, autoAbilities, onRebirth,
         >
           🔢 Числа: {numMode === 'full' ? 'полные' : 'сокращённые (от 1E+9)'}
         </button>
+        <button
+          onClick={() => game.setAuto('autoEnhance', AUTO_ENHANCE_STEPS[(AUTO_ENHANCE_STEPS.indexOf(state.settings.autoEnhance) + 1) % AUTO_ENHANCE_STEPS.length])}
+          className="btn-fantasy w-full mt-2 py-2.5 rounded-lg text-sm font-bold"
+        >
+          ⚒️ Авто-заточка: {state.settings.autoEnhance ? `до +${state.settings.autoEnhance}` : 'выкл.'}
+        </button>
+        <button
+          onClick={() => game.setAuto('autoCraft', AUTO_CRAFT_STEPS[(AUTO_CRAFT_STEPS.indexOf(state.settings.autoCraft) + 1) % AUTO_CRAFT_STEPS.length])}
+          className="btn-fantasy w-full mt-2 py-2.5 rounded-lg text-sm font-bold"
+        >
+          🔨 Авто-крафт: {state.settings.autoCraft ? `до «${RARITY_NAME[state.settings.autoCraft]}»` : 'выкл.'}
+        </button>
+        <p className="text-[11px] text-purple-300/70 text-center mt-1 leading-tight">
+          Авто-функции работают после каждой победы и тратят золото, только если его хватает минимум вдвое (кроме неудачных попыток).
+        </p>
+        <button
+          onClick={async () => {
+            if (state.settings.notify) { game.setAuto('notify', false); return; }
+            const ok = await enableNotifications();
+            game.setAuto('notify', true);
+            if (!ok) alert('Уведомления работают только в приложении (APK) и после разрешения в системе.');
+          }}
+          className="btn-fantasy w-full mt-2 py-2.5 rounded-lg text-sm font-bold"
+        >
+          🔔 Уведомления: {state.settings.notify ? 'вкл.' : 'выкл.'}
+        </button>
+        <SaveTransfer game={game} />
         <p className="text-[11px] text-purple-300/70 text-center mt-1 leading-tight">
           Если игра тормозит — выберите «Низкая»: меньше эффектов, заметно легче для телефона.
         </p>

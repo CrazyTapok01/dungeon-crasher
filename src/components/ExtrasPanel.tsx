@@ -3,7 +3,7 @@ import type { GameState } from '../game/reducer';
 import type { Item } from '../types';
 import type { useGame } from '../hooks/useGame';
 import {
-  COLL, COLL_REWARDS, DAILY_CHALLENGE, MAX_SOCKETS, RARITY_COLORS, RARITY_NAME, SETS, STONES, STONE_SHOP, STONE_TIERS, TOWER,
+  COLL, COLL_REWARDS, RAID, WEEKLY, WEEKLY_REWARDS, collectionTitle, raidBoss, raidReward, setDef, weekKey, weeklyMod, DAILY_CHALLENGE, MAX_SOCKETS, RARITY_COLORS, RARITY_NAME, SETS, STONES, STONE_SHOP, STONE_TIERS, TOWER,
   bestiaryList, collectionList, collectionProgress, dailyModFor, dailyReward, parseStone, setBonusText, setCounts, soulsForFloor, stoneDesc,
   stoneKey, stoneName, todayKey, towerBoss, towerKeysNow, towerMech, towerReward,
 } from '../gameData';
@@ -12,10 +12,12 @@ import { useFmt } from '../game/num';
 import Tip from './Tip';
 
 type Game = ReturnType<typeof useGame>;
-type Sub = 'tower' | 'daily' | 'coll' | 'stones' | 'sets' | 'run';
+type Sub = 'tower' | 'raid' | 'daily' | 'weekly' | 'coll' | 'stones' | 'sets' | 'run';
 const SUBS: { id: Sub; icon: string; label: string }[] = [
   { id: 'tower', icon: '🗼', label: 'Башня' },
-  { id: 'daily', icon: '🎯', label: 'Испытание' },
+  { id: 'raid', icon: '⚠️', label: 'Рейд' },
+  { id: 'daily', icon: '🎯', label: 'День' },
+  { id: 'weekly', icon: '📅', label: 'Неделя' },
   { id: 'coll', icon: '📖', label: 'Коллекция' },
   { id: 'stones', icon: '💠', label: 'Камни' },
   { id: 'sets', icon: '🧩', label: 'Наборы' },
@@ -34,7 +36,7 @@ export default function ExtrasPanel({ state, game }: { state: GameState; game: G
   return (
     <div className="panel rounded-xl p-3 border-amber-500/40">
       <h2 className="text-lg font-black text-amber-300 mb-2 text-center text-stroke">🧭 Испытания и коллекции</h2>
-      <div className="grid grid-cols-3 gap-1.5 mb-3">
+      <div className="grid grid-cols-4 gap-1.5 mb-3">
         {SUBS.map(t => (
           <button key={t.id} onClick={() => setSub(t.id)}
             className={`rounded-lg py-1.5 flex flex-col items-center text-[11px] font-bold border ${sub === t.id ? 'bg-purple-800/60 border-amber-400/70 text-amber-200' : 'bg-black/30 border-purple-900/60 text-purple-300'}`}>
@@ -43,6 +45,8 @@ export default function ExtrasPanel({ state, game }: { state: GameState; game: G
         ))}
       </div>
       {sub === 'tower' && <TowerView state={state} game={game} />}
+      {sub === 'raid' && <RaidView state={state} game={game} />}
+      {sub === 'weekly' && <WeeklyView state={state} game={game} />}
       {sub === 'daily' && <DailyView state={state} game={game} />}
       {sub === 'coll' && <CollectionView state={state} game={game} />}
       {sub === 'stones' && <StonesView state={state} game={game} />}
@@ -91,6 +95,72 @@ function TowerView({ state, game }: { state: GameState; game: Game }) {
   );
 }
 
+// ───────────────────────── Рейд-босс ─────────────────────────
+
+function RaidView({ state, game }: { state: GameState; game: Game }) {
+  const now = useNow();
+  const m = state.meta;
+  const left = Math.max(0, m.raid.at + RAID.cooldownMs - now);
+  const boss = raidBoss(game.stats, state.hero.floor, m.rebirths);
+  const r = raidReward(state.hero.floor);
+  const away = state.world !== 'dungeon';
+  const live = !!state.monster.raid;
+  return (
+    <div>
+      <Tip id="raid" text="Рейд-босс сражается прямо в основном бою и имеет три фазы: на 66% HP впадает в ярость, на 33% исцеляется и готовит мощный удар. Погибнешь — отступишь без потерь. Вызывать можно раз в несколько часов." />
+      <div className="rounded-lg p-2 bg-black/30 border border-red-800/60 mb-2 flex items-center gap-2">
+        <span className="text-4xl">{boss.emoji}</span>
+        <div className="text-xs min-w-0">
+          <div className="font-bold text-red-200 truncate">{boss.name}</div>
+          <div className="text-purple-200">Подстраивается под твою силу (≈{RAID.hits} ударов), 3 фазы. Перед боем герой лечится</div>
+          <div className="text-green-300">Награда: 👻 {r.souls} · 💎 {r.gems} · 💠 камень · эпическая вещь, шанс 30% вещи «Небесного стража»</div>
+        </div>
+      </div>
+      <div className="text-[11px] text-purple-300 mb-2">Побед в рейдах: {m.raid.wins}</div>
+      <button disabled={away || live || left > 0 || state.isDead} onClick={game.raidStart} className="btn-purple w-full py-2.5 rounded-xl font-black disabled:opacity-50">
+        {away ? '🔒 Только в Подземелье' : live ? '⚔️ Рейд идёт — смотри вкладку «Бой»' : left > 0 ? `⏳ Через ${dur(left)}` : '⚠️ Вызвать рейд-босса'}
+      </button>
+    </div>
+  );
+}
+
+// ───────────────────────── Испытание недели ─────────────────────────
+
+function WeeklyView({ state, game }: { state: GameState; game: Game }) {
+  const wk = weekKey();
+  const mod = weeklyMod(wk);
+  const w = state.meta.weekly.week === wk ? state.meta.weekly : { week: wk, best: 0, claimed: [] as number[], lastDay: '' };
+  const doneToday = w.lastDay === todayKey();
+  const away = state.world !== 'dungeon';
+  const cel = setDef('celestial')!;
+  return (
+    <div>
+      <Tip id="weekly" text="Новое условие каждую неделю: 30 врагов подряд (каждый 10-й — босс), лечение между боями слабое. Одна попытка в день, считается лучший результат недели. За рубежи — награды и эксклюзивные вещи набора «Небесный страж», которые больше нигде не падают." />
+      <div className="rounded-lg p-2 bg-black/30 border border-amber-700/50 mb-2 flex items-center gap-2">
+        <span className="text-3xl">{mod.emoji}</span>
+        <div className="text-xs"><div className="font-bold text-amber-200">Условие недели: {mod.name}</div><div className="text-purple-200">{mod.desc}</div></div>
+      </div>
+      <div className="text-center text-sm font-bold text-amber-200 mb-1">Лучший результат: {w.best}/{WEEKLY.foes}</div>
+      <div className="space-y-1 mb-2">
+        {WEEKLY_REWARDS.map(r => {
+          const got = w.claimed.includes(r.need);
+          const can = !got && w.best >= r.need;
+          return (
+            <div key={r.need} className={`flex items-center gap-2 rounded-lg px-2 py-1 border text-xs ${got ? 'bg-green-950/40 border-green-700/60' : can ? 'bg-amber-900/30 border-amber-500/60' : 'bg-black/30 border-purple-900/60'}`}>
+              <div className="flex-1 min-w-0"><b className="text-purple-100">{r.need} побед</b><div className="text-[10px] text-purple-300">💎{r.gems} 👻{r.souls}{r.piece ? ` · ${cel.emoji} вещь «${cel.name}» (${RARITY_NAME[r.piece.rarity]})` : ''}</div></div>
+              <button disabled={!can} onClick={() => game.claimWeekly(r.need)} className="btn-fantasy px-2 py-1 rounded text-[11px] font-bold disabled:opacity-40">{got ? '✓' : can ? 'Забрать' : '🔒'}</button>
+            </div>
+          );
+        })}
+      </div>
+      <div className="text-[10px] text-purple-400 mb-2 leading-snug">{cel.emoji} {cel.name}: 2 вещи — {setBonusText(cel.two)}; 3 вещи — {setBonusText(cel.three)}. Вещи: {cel.pieces.weapon}, {cel.pieces.armor}, {cel.pieces.amulet}.</div>
+      <button disabled={doneToday || away || state.isDead} onClick={game.weeklyRun} className="btn-purple w-full py-2.5 rounded-xl font-black disabled:opacity-50">
+        {doneToday ? '✓ Попытка на сегодня использована' : away ? '🔒 Только в Подземелье' : '📅 Начать забег недели'}
+      </button>
+    </div>
+  );
+}
+
 // ───────────────────────── Ежедневное испытание ─────────────────────────
 
 function DailyView({ state, game }: { state: GameState; game: Game }) {
@@ -127,6 +197,7 @@ function CollectionView({ state, game }: { state: GameState; game: Game }) {
     <div>
       <Tip id="coll" text="Здесь отмечаются все монстры, которых ты победил, и все типы вещей, что находил (Secret-вещи дают бонус в 10 раз больше обычных). Заполнение коллекции даёт постоянный бонус к атаке и HP и награды." />
       <div className="text-center mb-2">
+        <div className="text-[11px] text-fuchsia-300 font-bold">Титул: {collectionTitle(p.pct)}</div>
         <div className="text-sm font-bold text-amber-200">Заполнено {p.done}/{p.total} ({p.pct}%)</div>
         <div className="h-2 bg-black/50 rounded-full overflow-hidden border border-purple-900/60 mt-1"><div className="h-full bg-gradient-to-r from-purple-500 to-amber-300" style={{ width: `${p.pct}%` }} /></div>
         <div className="text-[11px] text-green-300 mt-1">Бонус коллекции: +{p.bonus.toFixed(2).replace(/\.?0+$/, '')}% к атаке и HP (находка = +{COLL.perEntry}%, Secret = +{COLL.perSecret}%)</div>

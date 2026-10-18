@@ -1,7 +1,7 @@
-import type { Item } from '../types';
+import type { Equipment, Item } from '../types';
 import { useFmt } from '../game/num';
 import { useCoin, useFloor } from './coin';
-import { ENHANCE, parseStone, setDef, stoneDesc, setBonusText, RARITY_COLORS, RARITY_NAME, enhanceChance, enhanceCost, enhanced, itemScore, sellPrice } from '../gameData';
+import { ENHANCE, setCounts, parseStone, setDef, stoneDesc, setBonusText, RARITY_COLORS, RARITY_NAME, enhanceChance, enhanceCost, enhanced, itemScore, sellPrice } from '../gameData';
 
 interface Props {
   item: Item;
@@ -11,6 +11,9 @@ interface Props {
   onEnhance?: () => void;
   onEquip?: () => void;
   onSell?: () => void;
+  equippedAll?: Equipment;                // всё надетое — для подсказки о наборах
+  stock?: Record<string, number>;         // камни в запасе
+  onSocket?: (key: string) => void;       // вставить камень
 }
 
 /** Строка бонусов предмета: «⚔️ 12 · 🛡️ 4 · ⚡ +3% крита …» */
@@ -31,7 +34,7 @@ function Stats({ item }: { item: Item }) {
   );
 }
 
-export default function ItemCard({ item: raw, compareTo, equipped, onEquip, onSell, gold = 0, onEnhance }: Props) {
+export default function ItemCard({ item: raw, compareTo, equipped, onEquip, onSell, gold = 0, onEnhance, equippedAll, stock, onSocket }: Props) {
   const coin = useCoin();
   const f = useFmt();
   const floor = useFloor();
@@ -61,6 +64,21 @@ export default function ItemCard({ item: raw, compareTo, equipped, onEquip, onSe
           )}
         </div>
       </div>
+      {onEquip && equippedAll && (() => {
+        const cnt = setCounts(equippedAll);
+        const gain = item.set && compareTo?.set !== item.set ? (cnt[item.set] ?? 0) + 1 : 0;
+        const loss = compareTo?.set && compareTo.set !== item.set ? cnt[compareTo.set] ?? 0 : 0;
+        const a = gain >= 2 ? `🧩 С этой вещью набор «${setDef(item.set)?.name}» будет ${gain}/3` : '';
+        const b = loss >= 2 ? `⚠️ Потеряешь бонус набора «${setDef(compareTo?.set)?.name}» (${loss}/3)` : '';
+        return (a || b) ? <div className="mt-1 text-[10px] font-bold leading-tight">{a && <div className="text-green-300">{a}</div>}{b && <div className="text-red-300">{b}</div>}</div> : null;
+      })()}
+      {onSocket && stock && (item.sockets ?? 0) > (item.stones?.length ?? 0) && Object.keys(stock).some(k => stock[k] > 0) && (
+        <div className="mt-1.5 flex flex-wrap gap-1 items-center text-[10px] text-cyan-200">💠 Вставить:
+          {Object.keys(stock).filter(k => stock[k] > 0 && parseStone(k)).sort().map(k => (
+            <button key={k} onClick={() => onSocket(k)} className="btn-fantasy px-1.5 py-0.5 rounded font-bold">{parseStone(k)!.def.emoji}{parseStone(k)!.tier} ×{stock[k]}</button>
+          ))}
+        </div>
+      )}
       {onEnhance && (
         plus >= ENHANCE.max
           ? <div className="mt-2 text-center text-[11px] font-bold text-amber-300">⚒️ Максимальная заточка</div>

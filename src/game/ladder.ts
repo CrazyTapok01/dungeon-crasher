@@ -25,7 +25,7 @@ export interface LadderStep {
 }
 
 export interface LadderResult {
-  kind: 'tower' | 'daily';
+  kind: 'tower' | 'daily' | 'weekly';
   steps: LadderStep[];
   cleared: number;
   lines: string[];  // награды (заполняет reducer)

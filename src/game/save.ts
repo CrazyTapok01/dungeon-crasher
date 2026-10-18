@@ -3,7 +3,7 @@ import type {
 } from '../types';
 import {
   ACHIEVEMENTS, INITIAL_HERO, QUEST_INFO, RARITY_NAME, RELICS, RELIC_MAX, SKILLS, HELL_PACTS, SOUL_SHOP, FARMS,
-  STAGES_PER_FLOOR, GEM_SHOP, TOWER, parseStone, PETS, PET_MAX, TALENTS, emptyPets, emptyMeta, emptyRelics, emptySkillLevels, fillQuests,
+  STAGES_PER_FLOOR, GEM_SHOP, TOWER, parseStone, AUTO_ENHANCE_STEPS, AUTO_CRAFT_STEPS, PETS, PET_MAX, TALENTS, emptyPets, emptyMeta, emptyRelics, emptySkillLevels, fillQuests,
 } from '../gameData';
 
 const SAVE_KEY = 'dungeonCrasherSave_v3';
@@ -129,6 +129,8 @@ function sanitizeMeta(raw: unknown, hero: HeroState): Meta {
     tower: { best: Math.max(0, Math.floor(num(asRecord(r.tower).best))), keys: clamp(Math.floor(num(asRecord(r.tower).keys, TOWER.maxKeys)), 0, TOWER.maxKeys), at: num(asRecord(r.tower).at) },
     challenge: { last: typeof asRecord(r.challenge).last === 'string' ? (asRecord(r.challenge).last as string) : '', score: num(asRecord(r.challenge).score) },
     run: sanitizeRunStats(r.run),
+    weekly: { week: num(asRecord(r.weekly).week), best: num(asRecord(r.weekly).best), claimed: Array.isArray(asRecord(r.weekly).claimed) ? (asRecord(r.weekly).claimed as unknown[]).filter((x): x is number => typeof x === 'number') : [], lastDay: typeof asRecord(r.weekly).lastDay === 'string' ? (asRecord(r.weekly).lastDay as string) : '' },
+    raid: { at: num(asRecord(r.raid).at), wins: num(asRecord(r.raid).wins) },
     pets, activePet: ap ? ap.id : null, egg: typeof r.egg === 'number' ? clamp(Math.floor(r.egg), -1, 999) : -1,
     daily: {
       last: typeof asRecord(r.daily).last === 'string' ? (asRecord(r.daily).last as string) : '',
@@ -234,6 +236,9 @@ function fromRecord(d: Record<string, unknown>): SaveData {
     meta: sanitizeMeta(d.meta, hero),
     upgradeCounts: sanitizeCounts(d.upgradeCounts),
     settings: { autoAbilities: settings.autoAbilities !== false, autoElement: settings.autoElement === true,
+      autoEnhance: AUTO_ENHANCE_STEPS.includes(num(settings.autoEnhance)) ? num(settings.autoEnhance) : 0,
+      autoCraft: AUTO_CRAFT_STEPS.includes(settings.autoCraft as Rarity | null) && settings.autoCraft ? (settings.autoCraft as Rarity) : null,
+      notify: settings.notify === true,
       autoSell: Array.isArray(settings.autoSell) ? settings.autoSell.filter((r): r is Rarity => typeof r === 'string' && r in RARITY_NAME && r !== 'divine' && r !== 'secret') : [] },
     heroClass: d.heroClass === 'warrior' || d.heroClass === 'mage' || d.heroClass === 'thief' ? d.heroClass : null,
     talents: sanitizeTalents(d.talents),
@@ -255,7 +260,33 @@ export function loadGame(): SaveData | null {
   return null;
 }
 
+let saveBlocked = false; // после импорта перезаписывать сохранение нельзя до перезагрузки
+
+/** Код сохранения: можно скопировать и вставить на другом устройстве. */
+export function exportSave(): string | null {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    return raw ? `DC1:${btoa(unescape(encodeURIComponent(raw)))}` : null;
+  } catch { return null; }
+}
+
+/** Проверяет и записывает код сохранения. После успеха страницу нужно перезагрузить. */
+export function importSave(code: string): boolean {
+  try {
+    const t = code.trim();
+    if (!t.startsWith('DC1:')) return false;
+    const raw = decodeURIComponent(escape(atob(t.slice(4))));
+    const data = asRecord(JSON.parse(raw));
+    if (!data.hero) return false;
+    fromRecord(data); // проверка: не падает на этих данных
+    localStorage.setItem(SAVE_KEY, raw);
+    saveBlocked = true;
+    return true;
+  } catch { return false; }
+}
+
 export function saveGame(data: SaveData): void {
+  if (saveBlocked) return;
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({ ...data, lastSeen: Date.now() }));
   } catch {

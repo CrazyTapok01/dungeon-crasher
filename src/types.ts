@@ -59,6 +59,7 @@ export interface Monster {
   element: Element;  // стихия врага: у каждой есть слабость
   affix?: string;   // аффикс этажа Преисподней (id)
   goblin?: boolean; // гоблин-казначей: мало HP, много золота
+  raid?: boolean;   // рейд-босс: бой с фазами
 }
 
 /** «Мозг» монстра в текущем бою: босс копит мощный удар, берсерк звереет. */
@@ -191,6 +192,8 @@ export interface Meta {
   tower: { best: number; keys: number; at: number }; // Башня испытаний: рекорд, ключи и время их пересчёта
   challenge: { last: string; score: number };        // ежедневное испытание: дата и результат
   run: RunStats;                    // статистика текущего забега (до перерождения)
+  weekly: { week: number; best: number; claimed: number[]; lastDay: string }; // испытание недели
+  raid: { at: number; wins: number }; // рейд-босс: когда последний раз вызывали и сколько побед
 }
 
 export interface RunStats {
@@ -278,6 +281,9 @@ export interface Settings {
   autoAbilities: boolean; // способности применяются сами
   autoElement: boolean;   // герой сам выбирает выигрышную стихию
   autoSell: Rarity[];     // качества, которые продаются сразу при выпадении (если не лучше надетого)
+  autoEnhance: number;    // авто-заточка надетого до этого уровня (0 — выкл.)
+  autoCraft: Rarity | null; // авто-крафт: сливать вещи этого качества и ниже (null — выкл.)
+  notify: boolean;        // уведомления в приложении
 }
 
 export type UpgradeKind = 'atk' | 'def' | 'hp';

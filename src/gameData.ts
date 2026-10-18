@@ -561,6 +561,7 @@ export function emptyMeta(): Meta {
     gems: 0, gemUps: {}, petGear: { collar: null, armor: null, charm: null }, hellOpen: false, hellMax: 0, soulUps: {}, soulsSpent: 0, pacts: {}, altar: 0, hellRebirths: 0, farms: {}, farmAt: 0, petRank: emptyPets(), petReborn: emptyPets(),
     stones: {}, seen: {}, found: [], collClaimed: [], tower: { best: 0, keys: TOWER.maxKeys, at: 0 }, challenge: { last: '', score: 0 },
     run: { start: 0, kills: 0, gold: 0, bosses: 0, bestHit: 0, best: null },
+    weekly: { week: 0, best: 0, claimed: [], lastDay: '' }, raid: { at: 0, wins: 0 },
     pets: emptyPets(), activePet: null, egg: -1,
   };
 }
@@ -1010,6 +1011,7 @@ export interface SetDef {
   id: string; name: string; emoji: string;
   pieces: Record<ItemSlot, string>;
   two: SetBonus; three: SetBonus;
+  exclusive?: boolean; // не выпадает случайно — только за особые награды
 }
 
 export const SETS: SetDef[] = [
@@ -1023,6 +1025,8 @@ export const SETS: SetDef[] = [
     two: { vamp: 2 }, three: { vamp: 3, atk: 15, hp: 10 } },
   { id: 'sage', name: 'Мудрец', emoji: '📚', pieces: { weapon: 'Посох Мудреца', armor: 'Ряса Мудреца', amulet: 'Око Мудреца' },
     two: { gold: 25, xp: 25 }, three: { gold: 35, xp: 35, atk: 8 } },
+  { id: 'celestial', name: 'Небесный страж', emoji: '🌟', exclusive: true, pieces: { weapon: 'Клинок рассвета', armor: 'Доспех созвездий', amulet: 'Венец небес' },
+    two: { atk: 15, hp: 15 }, three: { atk: 25, hp: 25, crit: 8 } },
 ];
 export const setDef = (id?: string): SetDef | undefined => SETS.find(x => x.id === id);
 
@@ -1038,7 +1042,8 @@ export function generateItem(floor: number, boosted: boolean, minRarity: Rarity 
   const sockets = lo + Math.floor(Math.random() * (hi - lo + 1));
   const out: Item = sockets > 0 ? { ...it, sockets } : it;
   if (Math.random() < SET_CHANCE[it.rarity]) {
-    const set = SETS[Math.floor(Math.random() * SETS.length)];
+    const pool = SETS.filter(x => !x.exclusive);
+    const set = pool[Math.floor(Math.random() * pool.length)];
     return { ...out, set: set.id, name: set.pieces[it.slot] };
   }
   return out;
@@ -1140,7 +1145,7 @@ export function towerBoss(n: number, maxFloor: number): Monster {
 }
 /** Награда за НОВЫЙ рекорд башни на ярусе n. */
 export function towerReward(n: number): { souls: number; gems: number; stoneTier: number } {
-  return { souls: 1 + Math.floor(n / 5), gems: n % 5 === 0 ? 1 : 0, stoneTier: n % 10 === 0 ? Math.min(3, 1 + Math.floor(n / 25)) : 0 };
+  return { souls: 8 + n * 4, gems: n % 3 === 0 ? 1 : 0, stoneTier: n % 5 === 0 ? Math.min(3, 1 + Math.floor(n / 20)) : 0 };
 }
 export function towerKeysNow(m: Meta, now: number): { keys: number; nextMs: number } {
   const t = m.tower;
@@ -1229,3 +1234,64 @@ export function collectionProgress(m: Meta): { done: number; total: number; pct:
   const total = ml.length + cl.length;
   return { done, total, pct: Math.floor((done / total) * 100), bonus: (done - secret) * COLL.perEntry + secret * COLL.perSecret, monsters: mDone, monstersTotal: ml.length };
 }
+
+
+// ════════════════════════════════════════════════════════════════
+//  ИСПЫТАНИЕ НЕДЕЛИ, РЕЙД-БОСС, АВТО-ФУНКЦИИ
+// ════════════════════════════════════════════════════════════════
+
+/** Номер недели (с понедельника) по местному времени. */
+export const weekKey = (d = new Date()): number => Math.floor((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000 + 3) / 7);
+export const WEEKLY = { foes: 30, heal: 0.1, perFoe: 0.45 };
+export function weeklyMod(week = weekKey()): DailyMod { return DAILY_MODS[(week * 5 + 3) % DAILY_MODS.length]; }
+export function weeklyFoe(i: number, maxFloor: number): Monster {
+  const boss = i % 10 === 0;
+  const f = Math.max(3, Math.round(maxFloor * 0.8)) + i * WEEKLY.perFoe;
+  const b = baseMonsterStats(f, boss ? STAGES_PER_FLOOR : 5, boss);
+  const base = boss ? BOSSES[(i / 10 - 1) % BOSSES.length] : MONSTER_POOL[Math.min(MONSTER_POOL.length - 1, Math.floor(f / 2))];
+  return { name: base.name, emoji: base.emoji, hp: b.hp, atk: b.atk, def: b.def, gold: 0, xp: 0, isBoss: boss, isElite: false, tier: 6, element: ELEMENT_CYCLE[i % 3] };
+}
+export const WEEKLY_REWARDS: { need: number; gems: number; souls: number; piece?: { rarity: Rarity } }[] = [
+  { need: 8,  gems: 1, souls: 20 },
+  { need: 16, gems: 2, souls: 50, piece: { rarity: 'epic' } },
+  { need: 24, gems: 3, souls: 100, piece: { rarity: 'legendary' } },
+  { need: 30, gems: 5, souls: 200, piece: { rarity: 'divine' } },
+];
+/** Вещь заданного набора и слота (для наград). */
+export function makeSetItem(setId: string, rarity: Rarity, floor: number): Item {
+  const set = setDef(setId)!;
+  const slots: ItemSlot[] = ['weapon', 'armor', 'amulet'];
+  const slot = slots[Math.floor(Math.random() * 3)];
+  let it = rollItem(floor, true, rarity, 'dungeon');
+  for (let i = 0; i < 60 && (it.slot !== slot || it.rarity !== rarity); i++) it = rollItem(floor, true, rarity, 'dungeon');
+  it = { ...it, rarity, set: setId, name: set.pieces[it.slot] };
+  const sockets = Math.max(SOCKET_ROLL[rarity][0], it.sockets ?? 0);
+  return sockets > 0 ? { ...it, sockets } : it;
+}
+
+export const RAID = { cooldownMs: 3 * 3600 * 1000, hits: 55, hitsToKill: 30, healFrac: 0.25 };
+export const RAID_NAMES: { name: string; emoji: string }[] = [
+  { name: 'Мировой змей', emoji: '🐍' }, { name: 'Титан руин', emoji: '🗿' }, { name: 'Владыка бурь', emoji: '⛈️' },
+  { name: 'Пожиратель звёзд', emoji: '🌑' }, { name: 'Бессмертный лич-король', emoji: '☠️' },
+];
+export function raidBoss(stats: { atk: number; maxHp: number; def: number }, floor: number, rebirths: number): Monster {
+  // Босс подстраивается под силу героя: ~45 ударов до победы, удар ≈ 1/45 HP героя. Выигрыш зависит от способностей, щита и исцеления.
+  const base = RAID_NAMES[rebirths % RAID_NAMES.length];
+  const b = baseMonsterStats(floor + 1, STAGES_PER_FLOOR, true);
+  return {
+    name: `${base.name} (рейд)`, emoji: base.emoji,
+    hp: Math.round(stats.atk * RAID.hits), atk: Math.round(stats.maxHp / RAID.hitsToKill + stats.def * 0.7), def: Math.round(stats.atk * 0.2),
+    gold: b.gold * 10, xp: b.xp * 5, isBoss: true, isElite: false, tier: 10, element: ELEMENT_CYCLE[floor % 3], raid: true,
+  };
+}
+export function raidReward(floor: number): { souls: number; gems: number; stoneTier: number } {
+  return { souls: 15 + Math.floor(floor / 2), gems: 2, stoneTier: floor >= 60 ? 3 : floor >= 25 ? 2 : 1 };
+}
+
+export const AUTO_ENHANCE_STEPS = [0, 3, 5, 7, 10];
+export const AUTO_CRAFT_STEPS: (Rarity | null)[] = [null, 'common', 'uncommon', 'rare', 'epic'];
+
+export const COLLECTION_TITLES: { pct: number; name: string }[] = [
+  { pct: 0, name: 'Новичок' }, { pct: 25, name: 'Следопыт' }, { pct: 50, name: 'Коллекционер' }, { pct: 75, name: 'Хранитель бестиария' }, { pct: 100, name: 'Легенда подземелий' },
+];
+export const collectionTitle = (pct: number) => [...COLLECTION_TITLES].reverse().find(t => pct >= t.pct)!.name;

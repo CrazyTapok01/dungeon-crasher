@@ -20,6 +20,16 @@ if (fs.existsSync(manifestPath)) {
   } else warn('в AndroidManifest.xml не найден <activity>');
 } else warn('AndroidManifest.xml не найден — сначала выполните `npx cap add android`');
 
+// 1б. разрешение на уведомления (Android 13+)
+if (fs.existsSync(manifestPath)) {
+  let xml = fs.readFileSync(manifestPath, 'utf8');
+  if (!xml.includes('POST_NOTIFICATIONS')) {
+    xml = xml.replace('</manifest>', '    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n</manifest>');
+    fs.writeFileSync(manifestPath, xml);
+    console.log('✅ разрешение на уведомления');
+  }
+}
+
 // 2. версия
 const gradlePath = 'android/app/build.gradle';
 if (fs.existsSync(gradlePath)) {

@@ -16,6 +16,8 @@ interface Props {
   heroClass: ClassId | null;
   autoSell: Rarity[];
   onAutoSell: (r: Rarity) => void;
+  stones: Record<string, number>;
+  onSocket: (itemId: string, key: string) => void;
 }
 
 const SLOTS: { key: ItemSlot; label: string; emoji: string }[] = [
@@ -24,7 +26,7 @@ const SLOTS: { key: ItemSlot; label: string; emoji: string }[] = [
   { key: 'amulet', label: 'Амулет', emoji: '📿' },
 ];
 
-export default function InventoryPanel({ inventory, limit, equipped, onEquip, onSell, onEquipBest, onSellJunk, gold, onEnhance, heroClass, autoSell, onAutoSell }: Props) {
+export default function InventoryPanel({ inventory, limit, equipped, onEquip, onSell, onEquipBest, onSellJunk, gold, onEnhance, heroClass, autoSell, onAutoSell, stones, onSocket }: Props) {
   // лучшие и редкие — сверху
   const sorted = [...inventory].sort((a, b) =>
     RARITY_ORDER.indexOf(b.rarity) - RARITY_ORDER.indexOf(a.rarity) || itemScore(b) - itemScore(a));
@@ -74,7 +76,7 @@ export default function InventoryPanel({ inventory, limit, equipped, onEquip, on
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           {sorted.map(item => (
-            <ItemCard key={item.id} item={item} compareTo={equipped[item.slot]}
+            <ItemCard key={item.id} item={item} compareTo={equipped[item.slot]} equippedAll={equipped} stock={stones} onSocket={k => onSocket(item.id, k)}
               onEquip={() => onEquip(item)} onSell={() => onSell(item)} />
           ))}
         </div>
