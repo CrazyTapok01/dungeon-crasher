@@ -8,6 +8,10 @@ import GemShopPanel from './GemShopPanel';
 import SoulShopPanel from './SoulShopPanel';
 import HellPanel from './HellPanel';
 import { useCoin, useWorld } from './coin';
+import type { GameState } from '../game/reducer';
+import type { useGame } from '../hooks/useGame';
+import ExtrasPanel from './ExtrasPanel';
+import Tip from './Tip';
 import { ACHIEVEMENTS, PERKS, PRESTIGE, soulsForFloor } from '../gameData';
 
 interface Props {
@@ -30,12 +34,14 @@ interface Props {
   onPetCrate: (kind: 'basic' | 'gem') => void;
   onToggleSound: () => void;
   onToggleAuto: () => void;
+  state: GameState;
+  game: ReturnType<typeof useGame>;
 }
 
 const GFX_LABEL: Record<GfxSetting, string> = { auto: 'Авто', high: 'Высокая', low: 'Низкая' };
 const NEXT_GFX: Record<GfxSetting, GfxSetting> = { auto: 'high', high: 'low', low: 'auto' };
 
-export default function MorePanel({ hero, meta, muted, autoAbilities, onRebirth, onClaimDaily, onSetPet, onPetRebirth, onReset, onBuyGem, onBuySoul, onPact, onAltar, onHellRebirth, onFarmUpgrade, onFarmCollect, onPetCrate, onToggleSound, onToggleAuto }: Props) {
+export default function MorePanel({ hero, meta, muted, autoAbilities, onRebirth, onClaimDaily, onSetPet, onPetRebirth, onReset, onBuyGem, onBuySoul, onPact, onAltar, onHellRebirth, onFarmUpgrade, onFarmCollect, onPetCrate, onToggleSound, onToggleAuto, state, game }: Props) {
   const gfx = useGfx();
   useFmt();
   const numMode = getNumMode();
@@ -75,12 +81,17 @@ export default function MorePanel({ hero, meta, muted, autoAbilities, onRebirth,
 
       <QuestsPanel meta={meta} onClaimDaily={onClaimDaily} />
 
+      <ExtrasPanel state={state} game={game} />
+
+      <Tip id="soulshop" text="Лавка душ: души тратятся на постоянные улучшения. Бонус душ при этом не падает — он считается от всех заработанных." />
       <SoulShopPanel meta={meta} onBuy={onBuySoul} />
 
+      {meta.hellOpen && <Tip id="hell" text="Преисподняя: у охотника свой герой и валюта (угли 🔥). Здесь выпадает больше кристаллов и камней, а навыки не ограничены. Прогресс не сбрасывается перерождением в Подземелье." />}
       {meta.hellOpen && <HellPanel meta={meta} world={world} coals={hero.gold} floor={hero.floor} onPact={onPact} onAltar={onAltar} onHellRebirth={onHellRebirth} onFarmUpgrade={onFarmUpgrade} onFarmCollect={onFarmCollect} />}
 
       <GemShopPanel meta={meta} onBuy={onBuyGem} />
 
+      <Tip id="pets" text="Питомцы дают пассивные бонусы. Яйца падают с боссов; за кристаллы и золото можно купить ящики со снаряжением питомца. Питомец 10/10 может переродиться для усиленных бонусов." />
       <PetsPanel onRebirth={onPetRebirth} meta={meta} gold={hero.gold} floor={hero.floor} coin={coin} canBuyWithGold onSet={onSetPet} onCrate={onPetCrate} />
 
       {/* ── путь перерождений ── */}

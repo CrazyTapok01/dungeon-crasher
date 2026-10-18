@@ -3,7 +3,7 @@ import type {
 } from '../types';
 import {
   ACHIEVEMENTS, INITIAL_HERO, QUEST_INFO, RARITY_NAME, RELICS, RELIC_MAX, SKILLS, HELL_PACTS, SOUL_SHOP, FARMS,
-  STAGES_PER_FLOOR, GEM_SHOP, PETS, PET_MAX, TALENTS, emptyPets, emptyMeta, emptyRelics, emptySkillLevels, fillQuests,
+  STAGES_PER_FLOOR, GEM_SHOP, TOWER, parseStone, PETS, PET_MAX, TALENTS, emptyPets, emptyMeta, emptyRelics, emptySkillLevels, fillQuests,
 } from '../gameData';
 
 const SAVE_KEY = 'dungeonCrasherSave_v3';
@@ -123,6 +123,12 @@ function sanitizeMeta(raw: unknown, hero: HeroState): Meta {
     petRank: sanitizePetNums(r.petRank, 1, 3, 1), petReborn: sanitizePetNums(r.petReborn, 0, 1e15, 0),
     soulUps: sanitizeSoulUps(r.soulUps), soulsSpent: num(r.soulsSpent), altar: num(r.altar), pacts: sanitizePacts(r.pacts),
     gemUps: sanitizeGemUps(r.gemUps), petGear: sanitizePetGear(r.petGear),
+    stones: sanitizeStones(r.stones), seen: sanitizeCounts2(r.seen),
+    found: Array.isArray(r.found) ? r.found.filter((x): x is string => typeof x === 'string').slice(0, 300) : [],
+    collClaimed: Array.isArray(r.collClaimed) ? r.collClaimed.filter((x): x is number => typeof x === 'number') : [],
+    tower: { best: Math.max(0, Math.floor(num(asRecord(r.tower).best))), keys: clamp(Math.floor(num(asRecord(r.tower).keys, TOWER.maxKeys)), 0, TOWER.maxKeys), at: num(asRecord(r.tower).at) },
+    challenge: { last: typeof asRecord(r.challenge).last === 'string' ? (asRecord(r.challenge).last as string) : '', score: num(asRecord(r.challenge).score) },
+    run: sanitizeRunStats(r.run),
     pets, activePet: ap ? ap.id : null, egg: typeof r.egg === 'number' ? clamp(Math.floor(r.egg), -1, 999) : -1,
     daily: {
       last: typeof asRecord(r.daily).last === 'string' ? (asRecord(r.daily).last as string) : '',
@@ -130,6 +136,26 @@ function sanitizeMeta(raw: unknown, hero: HeroState): Meta {
     },
   };
   return fillQuests(meta);
+}
+
+function sanitizeStones(raw: unknown): Record<string, number> {
+  const r = asRecord(raw);
+  const out: Record<string, number> = {};
+  for (const k of Object.keys(r)) if (parseStone(k)) { const v = Math.max(0, Math.floor(num(r[k]))); if (v > 0) out[k] = v; }
+  return out;
+}
+function sanitizeCounts2(raw: unknown): Record<string, number> {
+  const r = asRecord(raw);
+  const out: Record<string, number> = {};
+  for (const k of Object.keys(r)) { const v = Math.max(0, Math.floor(num(r[k]))); if (v > 0 && /^[dh]:/.test(k)) out[k] = v; }
+  return out;
+}
+function sanitizeRunStats(raw: unknown): Meta['run'] {
+  const r = asRecord(raw);
+  const b = asRecord(r.best);
+  const best = typeof b.name === 'string' && (b.rarity as string) in RARITY_NAME
+    ? { name: b.name, emoji: typeof b.emoji === 'string' ? b.emoji : '🎁', rarity: b.rarity as Rarity, price: num(b.price) } : null;
+  return { start: num(r.start) > 0 ? num(r.start) : Date.now(), kills: num(r.kills), gold: num(r.gold), bosses: num(r.bosses), bestHit: num(r.bestHit), best };
 }
 
 function sanitizePetNums(raw: unknown, lo: number, hi: number, dflt: number): Record<PetId, number> {

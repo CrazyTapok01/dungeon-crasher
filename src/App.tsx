@@ -16,6 +16,8 @@ import ClassSelect from './components/ClassSelect';
 import ElementBar from './components/ElementBar';
 import TalentsPanel from './components/TalentsPanel';
 import CraftPanel from './components/CraftPanel';
+import Tip from './components/Tip';
+import LadderModal from './components/LadderModal';
 import WorldMap from './components/WorldMap';
 import { fmt, useFmt } from './game/num';
 import { CoinContext, FloorContext, WorldContext } from './components/coin';
@@ -157,7 +159,7 @@ export default function App() {
           />
         )}
         {tab === 'craft' && (
-          <CraftPanel inventory={state.inventory} limit={inventoryLimit(state.meta.rebirths)} gold={hero.gold} onCraft={game.craft} />
+          <><Tip id="craft" text="Крафт: несколько вещей одного слота и качества сливаются в вещь на ступень выше. Эпические в легендарные — с риском. Божественные и Secret не крафтятся, только выпадают." /><CraftPanel inventory={state.inventory} limit={inventoryLimit(state.meta.rebirths)} gold={hero.gold} onCraft={game.craft} /></>
         )}
         {tab === 'shop' && (
           <ShopPanel
@@ -171,6 +173,7 @@ export default function App() {
             hero={hero} meta={state.meta} muted={muted} autoAbilities={state.settings.autoAbilities}
             onRebirth={() => setConfirm('rebirth')} onClaimDaily={game.claimDaily} onSetPet={game.setPet} onPetRebirth={game.petRebirth} onBuyGem={game.buyGem} onBuySoul={game.buySoul} onPact={game.togglePact} onAltar={game.altar} onHellRebirth={() => setConfirm('hell')} onFarmUpgrade={game.farmUpgrade} onFarmCollect={game.farmCollect} onPetCrate={game.petCrate} onReset={() => setConfirm('reset')}
             onToggleSound={toggleSound} onToggleAuto={() => game.setAutoAbilities(!state.settings.autoAbilities)}
+            state={state} game={game}
           />
         )}
       </main>
@@ -191,6 +194,7 @@ export default function App() {
       </nav>
 
       {/* ── окна ── */}
+      {state.ladder && <LadderModal result={state.ladder} onClose={game.closeLadder} />}
       {toast && (
         <div key={toast.id} className="toast pointer-events-none fixed left-1/2 z-[90] px-4 py-2 rounded-full bg-amber-900/95 border border-amber-400 text-amber-100 font-black text-sm shadow-lg"
              style={{ top: 'calc(var(--sat) + 10px)' }}>

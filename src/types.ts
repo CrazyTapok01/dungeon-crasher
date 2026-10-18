@@ -19,6 +19,9 @@ export interface Item {
   emoji: string;
   price: number;
   plus?: number;    // уровень заточки (+1…+10): усиливает атаку, защиту и HP предмета
+  set?: string;     // id набора экипировки (бонус за 2–3 вещи)
+  sockets?: number; // сколько гнёзд для камней (0–3)
+  stones?: string[]; // вставленные камни (id вида «ruby2»)
 }
 
 /** Что надето на герое: по одному предмету на слот. */
@@ -181,6 +184,22 @@ export interface Meta {
   farmAt: number;              // с какого момента (мс) копятся кристаллы фермы
   petRank: Record<PetId, number>;   // ранг питомца: после перерождения бонусы умножаются на ранг
   petReborn: Record<PetId, number>; // когда питомец вернётся из перерождения (мс), 0 — не перерождается
+  stones: Record<string, number>;   // камни в запасе (id → количество)
+  seen: Record<string, number>;     // бестиарий: убито монстров каждого вида (ключ «d:Имя» / «h:Имя»)
+  found: string[];                  // коллекция: найденные вещи («item:слот:редкость», «set:набор:слот»)
+  collClaimed: number[];            // полученные награды коллекции (проценты заполнения)
+  tower: { best: number; keys: number; at: number }; // Башня испытаний: рекорд, ключи и время их пересчёта
+  challenge: { last: string; score: number };        // ежедневное испытание: дата и результат
+  run: RunStats;                    // статистика текущего забега (до перерождения)
+}
+
+export interface RunStats {
+  start: number;     // когда начат забег (мс)
+  kills: number;
+  gold: number;
+  bosses: number;
+  bestHit: number;   // самый сильный удар
+  best: { name: string; emoji: string; rarity: Rarity; price: number } | null; // лучшая находка
 }
 
 /** Миры: основное подземелье и Преисподняя (у неё свой герой и своя валюта). */

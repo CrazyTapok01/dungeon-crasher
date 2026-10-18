@@ -19,7 +19,7 @@ export function useGame() {
   const stats = useMemo(
     () => computeStats(state.hero, state.skillLevels, state.equipped, state.meta.souls, extrasOf(state)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state.hero, state.skillLevels, state.equipped, state.meta.souls, state.meta.relics, state.heroClass, state.talents, state.meta.activePet, state.meta.pets, state.meta.petRank, state.meta.petReborn],
+    [state.hero, state.skillLevels, state.equipped, state.meta.souls, state.meta.relics, state.heroClass, state.talents, state.meta.activePet, state.meta.pets, state.meta.petRank, state.meta.petReborn, state.meta.found, state.meta.seen],
   );
 
   const skills = useMemo<Skill[]>(
@@ -126,6 +126,15 @@ export function useGame() {
     travel: (to: WorldId) => dispatch({ type: 'TRAVEL', to }),
     openHell: () => dispatch({ type: 'OPEN_HELL' }),
     buyGem: (id: string) => dispatch({ type: 'BUY_GEM', id }),
+    towerRun: () => dispatch({ type: 'TOWER_RUN' }),
+    dailyRun: () => dispatch({ type: 'DAILY_RUN' }),
+    closeLadder: () => dispatch({ type: 'CLOSE_LADDER' }),
+    buyStone: () => dispatch({ type: 'BUY_STONE' }),
+    mergeStone: (key: string) => dispatch({ type: 'MERGE_STONE', key }),
+    socket: (itemId: string, key: string) => dispatch({ type: 'SOCKET', itemId, key }),
+    unsocket: (itemId: string) => dispatch({ type: 'UNSOCKET', itemId }),
+    addSocket: (itemId: string) => dispatch({ type: 'ADD_SOCKET', itemId }),
+    claimColl: (pct: number) => dispatch({ type: 'CLAIM_COLL', pct }),
     petCrate: (kind: 'basic' | 'gem') => dispatch({ type: 'PET_CRATE', kind }),
     setClass: (id: ClassId) => dispatch({ type: 'SET_CLASS', id }),
     setElement: (element: Element) => dispatch({ type: 'SET_ELEMENT', element }),

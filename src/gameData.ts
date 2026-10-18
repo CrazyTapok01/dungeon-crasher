@@ -1,7 +1,7 @@
 import type {
   AbilityDef, AbilityId, BonusKey, GemUpgradeDef, PetSlot, WorldId, PetDef, PetId, TalentDef, ClassDef, ClassId, Cooldowns, Element, Equipment, HeroState, Item, Meta, Monster, MonsterTrait,
   Quest, QuestKind, Rarity, RelicDef, RelicId, ShopUpgrade, SkillDef, SkillId, SkillLevels,
-  UpgradeCounts, UpgradeKind,
+  UpgradeCounts, UpgradeKind, ItemSlot,
 } from './types';
 
 // ════════════════════════════════════════════════════════════════
@@ -455,7 +455,7 @@ let idCounter = 0;
  * Создаёт предмет. boosted — с боссов и из сундуков (редкие вещи чаще),
  * minRarity — «не хуже этой редкости» (для сундуков).
  */
-export function generateItem(floor: number, boosted: boolean, minRarity: Rarity = 'common', world: WorldId = 'dungeon'): Item {
+function rollItem(floor: number, boosted: boolean, minRarity: Rarity = 'common', world: WorldId = 'dungeon'): Item {
   const hell = world === 'hell';
   let roll = rollRarity(boosted);
   if (RARITY_ORDER.indexOf(roll.rarity) < RARITY_ORDER.indexOf(minRarity)) {
@@ -559,6 +559,8 @@ export function emptyMeta(): Meta {
     kills: 0, relics: emptyRelics(), quests: [], questsDone: 0,
     daily: { last: '', streak: 0 }, goblins: 0,
     gems: 0, gemUps: {}, petGear: { collar: null, armor: null, charm: null }, hellOpen: false, hellMax: 0, soulUps: {}, soulsSpent: 0, pacts: {}, altar: 0, hellRebirths: 0, farms: {}, farmAt: 0, petRank: emptyPets(), petReborn: emptyPets(),
+    stones: {}, seen: {}, found: [], collClaimed: [], tower: { best: 0, keys: TOWER.maxKeys, at: 0 }, challenge: { last: '', score: 0 },
+    run: { start: 0, kills: 0, gold: 0, bosses: 0, bestHit: 0, best: null },
     pets: emptyPets(), activePet: null, egg: -1,
   };
 }
@@ -994,3 +996,236 @@ export const heroVariant = (world: WorldId, cls: ClassId | null): 'warrior' | 'm
 
 /** Имя героя на плашке. */
 export const heroName = (world: WorldId): string => WORLDS[world].hero;
+
+
+// ════════════════════════════════════════════════════════════════
+//  НАБОРЫ ЭКИПИРОВКИ
+// ════════════════════════════════════════════════════════════════
+// Вещь из набора выпадает с редкого качества и выше. 2 вещи одного набора дают малый бонус, 3 — большой.
+
+export type SetKey = 'atk' | 'hp' | 'def' | 'gold' | 'xp' | 'crit' | 'critdmg' | 'dodge' | 'vamp';
+export type SetBonus = Partial<Record<SetKey, number>>; // atk/hp/def/gold/xp — проценты, остальное — очки
+
+export interface SetDef {
+  id: string; name: string; emoji: string;
+  pieces: Record<ItemSlot, string>;
+  two: SetBonus; three: SetBonus;
+}
+
+export const SETS: SetDef[] = [
+  { id: 'guardian', name: 'Страж', emoji: '🛡️', pieces: { weapon: 'Молот Стража', armor: 'Бастион Стража', amulet: 'Печать Стража' },
+    two: { hp: 15 }, three: { hp: 15, def: 30 } },
+  { id: 'berserk', name: 'Берсерк', emoji: '🪓', pieces: { weapon: 'Секира Берсерка', armor: 'Шкура Берсерка', amulet: 'Клык Берсерка' },
+    two: { atk: 12 }, three: { atk: 18, critdmg: 25 } },
+  { id: 'shadow', name: 'Тень', emoji: '🌑', pieces: { weapon: 'Кинжал Тени', armor: 'Плащ Тени', amulet: 'Амулет Тени' },
+    two: { dodge: 5 }, three: { dodge: 7, crit: 10 } },
+  { id: 'vampire', name: 'Кровопийца', emoji: '🧛', pieces: { weapon: 'Клинок Кровопийцы', armor: 'Мантия Кровопийцы', amulet: 'Кубок Кровопийцы' },
+    two: { vamp: 2 }, three: { vamp: 3, atk: 15, hp: 10 } },
+  { id: 'sage', name: 'Мудрец', emoji: '📚', pieces: { weapon: 'Посох Мудреца', armor: 'Ряса Мудреца', amulet: 'Око Мудреца' },
+    two: { gold: 25, xp: 25 }, three: { gold: 35, xp: 35, atk: 8 } },
+];
+export const setDef = (id?: string): SetDef | undefined => SETS.find(x => x.id === id);
+
+/** Шанс, что выпавшая вещь окажется из набора. */
+export const SET_CHANCE: Record<Rarity, number> = { common: 0, uncommon: 0, rare: 0.15, epic: 0.25, legendary: 0.4, divine: 0.5, secret: 0.5 };
+/** Гнёзда: сколько вероятнее всего (минимум–максимум) по редкости. */
+export const SOCKET_ROLL: Record<Rarity, [number, number]> = { common: [0, 0], uncommon: [0, 0], rare: [0, 1], epic: [1, 1], legendary: [1, 2], divine: [2, 3], secret: [3, 3] };
+export const MAX_SOCKETS = 3;
+
+export function generateItem(floor: number, boosted: boolean, minRarity: Rarity = 'common', world: WorldId = 'dungeon'): Item {
+  const it = rollItem(floor, boosted, minRarity, world);
+  const [lo, hi] = SOCKET_ROLL[it.rarity];
+  const sockets = lo + Math.floor(Math.random() * (hi - lo + 1));
+  const out: Item = sockets > 0 ? { ...it, sockets } : it;
+  if (Math.random() < SET_CHANCE[it.rarity]) {
+    const set = SETS[Math.floor(Math.random() * SETS.length)];
+    return { ...out, set: set.id, name: set.pieces[it.slot] };
+  }
+  return out;
+}
+
+/** Сколько вещей каждого набора надето и какие бонусы это даёт. */
+export function setCounts(equipped: Equipment): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const it of Object.values(equipped)) if (it?.set) out[it.set] = (out[it.set] ?? 0) + 1;
+  return out;
+}
+export function setTotals(equipped: Equipment): SetBonus {
+  const out: SetBonus = {};
+  const counts = setCounts(equipped);
+  for (const [id, n] of Object.entries(counts)) {
+    const d = setDef(id);
+    if (!d || n < 2) continue;
+    for (const b of [d.two, ...(n >= 3 ? [d.three] : [])]) {
+      for (const k of Object.keys(b) as SetKey[]) out[k] = (out[k] ?? 0) + (b[k] ?? 0);
+    }
+  }
+  return out;
+}
+export const setBonusText = (b: SetBonus): string => (Object.keys(b) as SetKey[]).map(k => {
+  const v = b[k] ?? 0;
+  const pct = k === 'atk' || k === 'hp' || k === 'def' || k === 'gold' || k === 'xp';
+  const name: Record<SetKey, string> = { atk: 'атака', hp: 'HP', def: 'защита', gold: 'золото', xp: 'опыт', crit: 'крит', critdmg: 'крит. урон', dodge: 'уклонение', vamp: 'вампиризм' };
+  return `+${v}${pct || k === 'crit' || k === 'critdmg' || k === 'dodge' || k === 'vamp' ? '%' : ''} ${name[k]}`;
+}).join(', ');
+
+// ════════════════════════════════════════════════════════════════
+//  ГНЁЗДА И КАМНИ
+// ════════════════════════════════════════════════════════════════
+
+export type StoneType = 'ruby' | 'sapphire' | 'topaz' | 'citrine' | 'onyx' | 'jade';
+export interface StoneDef { type: StoneType; name: string; emoji: string; stat: SetKey; per: [number, number, number]; unit: string; label: string }
+export const STONES: StoneDef[] = [
+  { type: 'ruby',     name: 'Рубин',   emoji: '🔴', stat: 'atk',  per: [3, 6, 10],       unit: '%', label: 'атака' },
+  { type: 'sapphire', name: 'Сапфир',  emoji: '🔵', stat: 'hp',   per: [4, 8, 14],       unit: '%', label: 'HP' },
+  { type: 'topaz',    name: 'Топаз',   emoji: '🟡', stat: 'def',  per: [4, 8, 14],       unit: '%', label: 'защита' },
+  { type: 'citrine',  name: 'Цитрин',  emoji: '🟠', stat: 'crit', per: [1.5, 3, 5],      unit: '', label: 'шанс крита' },
+  { type: 'onyx',     name: 'Оникс',   emoji: '⚫', stat: 'vamp', per: [0.4, 0.8, 1.4],  unit: '', label: 'вампиризм' },
+  { type: 'jade',     name: 'Нефрит',  emoji: '🟢', stat: 'dodge', per: [1, 2, 3.5],     unit: '', label: 'уклонение' },
+];
+export const STONE_TIERS = ['Малый', 'Огранённый', 'Совершенный'];
+export const stoneKey = (t: StoneType, tier: number) => `${t}${tier}`;
+export function parseStone(key: string): { def: StoneDef; tier: number } | null {
+  const m = /^([a-z]+)([123])$/.exec(key);
+  const def = m && STONES.find(d => d.type === m[1]);
+  return def && m ? { def, tier: Number(m[2]) } : null;
+}
+export const stoneName = (key: string) => { const p = parseStone(key); return p ? `${p.def.emoji} ${STONE_TIERS[p.tier - 1]} ${p.def.name.toLowerCase()}` : key; };
+export const stoneDesc = (key: string) => { const p = parseStone(key); return p ? `+${p.def.per[p.tier - 1]}${p.def.unit === '%' ? '%' : ''} ${p.def.label}` : ''; };
+export const STONE_SHOP = { cost: 1, mergeNeed: 3, socketCost: 3 }; // кристаллов за случайный камень и за новое гнездо
+export const STONE_DROP = { dungeonBoss: 0.05, hellBoss: 0.4, hellElite: 0.06 };
+export const randomStone = (tier: number): string => stoneKey(STONES[Math.floor(Math.random() * STONES.length)].type, tier);
+/** Какого качества камень падает на этаже. */
+export function stoneTierFor(floor: number, world: WorldId): number {
+  const f = world === 'hell' ? floor * 3 : floor;
+  const r = Math.random();
+  if (f >= 90 && r < 0.12) return 3;
+  if (f >= 30 && r < 0.4) return 2;
+  return 1;
+}
+export function stoneTotals(equipped: Equipment): SetBonus {
+  const out: SetBonus = {};
+  for (const it of Object.values(equipped)) for (const k of it?.stones ?? []) {
+    const p = parseStone(k);
+    if (p) out[p.def.stat] = (out[p.def.stat] ?? 0) + p.def.per[p.tier - 1];
+  }
+  return out;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  БАШНЯ ИСПЫТАНИЙ И ЕЖЕДНЕВНОЕ ИСПЫТАНИЕ
+// ════════════════════════════════════════════════════════════════
+
+export const TOWER = { maxKeys: 3, keyMs: 20 * 60 * 1000, heal: 0.25, startShare: 0.7, perFloor: 0.6 };
+
+export interface LadderMech { id: string; name: string; emoji: string; desc: string }
+export const TOWER_MECHS: LadderMech[] = [
+  { id: 'armor',  name: 'Каменная кожа',    emoji: '🪨', desc: 'Защита врага ×1.7' },
+  { id: 'regen',  name: 'Регенерация',      emoji: '💚', desc: 'Враг лечится на 3% HP за ход' },
+  { id: 'fury',   name: 'Ярость',           emoji: '😡', desc: 'Ниже 50% HP атака врага ×1.7' },
+  { id: 'thorns', name: 'Шипы',             emoji: '🌵', desc: 'Возвращает герою 12% нанесённого урона' },
+  { id: 'ward',   name: 'Магический барьер', emoji: '🔮', desc: 'Урон по врагу −35%' },
+  { id: 'venom',  name: 'Ядовитый туман',   emoji: '☣️', desc: 'Герой теряет 2.5% макс. HP за ход' },
+  { id: 'frost',  name: 'Ледяной взгляд',   emoji: '🧊', desc: 'Уклонение героя не работает' },
+  { id: 'giant',  name: 'Великан',          emoji: '🗿', desc: 'HP врага ×1.8, но атака −20%' },
+];
+export const towerMech = (n: number): LadderMech => TOWER_MECHS[(n - 1) % TOWER_MECHS.length];
+
+const ELEMENT_CYCLE: Element[] = ['fire', 'ice', 'nature'];
+export function towerBoss(n: number, maxFloor: number): Monster {
+  const f = Math.max(5, Math.round(maxFloor * TOWER.startShare)) + (n - 1) * TOWER.perFloor;
+  const b = baseMonsterStats(f, STAGES_PER_FLOOR, true);
+  const base = BOSSES[(n - 1) % BOSSES.length];
+  return { name: `${base.name} · ярус ${n}`, emoji: base.emoji, hp: b.hp, atk: b.atk, def: b.def, gold: 0, xp: 0, isBoss: true, isElite: false, tier: 10, element: ELEMENT_CYCLE[n % 3] };
+}
+/** Награда за НОВЫЙ рекорд башни на ярусе n. */
+export function towerReward(n: number): { souls: number; gems: number; stoneTier: number } {
+  return { souls: 1 + Math.floor(n / 5), gems: n % 5 === 0 ? 1 : 0, stoneTier: n % 10 === 0 ? Math.min(3, 1 + Math.floor(n / 25)) : 0 };
+}
+export function towerKeysNow(m: Meta, now: number): { keys: number; nextMs: number } {
+  const t = m.tower;
+  if (t.keys >= TOWER.maxKeys) return { keys: TOWER.maxKeys, nextMs: 0 };
+  const gained = Math.floor((now - t.at) / TOWER.keyMs);
+  const keys = Math.min(TOWER.maxKeys, t.keys + Math.max(0, gained));
+  return { keys, nextMs: keys >= TOWER.maxKeys ? 0 : TOWER.keyMs - ((now - t.at) % TOWER.keyMs) };
+}
+
+export interface DailyMod {
+  id: string; name: string; emoji: string; desc: string;
+  hero?: { hp?: number; atk?: number; def?: number; noCrit?: boolean; noDodge?: boolean; dot?: number };
+  foe?: { hp?: number; atk?: number; def?: number };
+}
+export const DAILY_MODS: DailyMod[] = [
+  { id: 'glass',  name: 'Стеклянная пушка', emoji: '💥', desc: 'Атака героя ×1.6, HP ×0.5', hero: { atk: 1.6, hp: 0.5 } },
+  { id: 'iron',   name: 'Железные враги',   emoji: '🔩', desc: 'Защита врагов ×1.8', foe: { def: 1.8 } },
+  { id: 'fog',    name: 'Ядовитый туман',   emoji: '☣️', desc: 'Герой теряет 2% HP за ход', hero: { dot: 0.02 } },
+  { id: 'rage',   name: 'Бешенство',        emoji: '😡', desc: 'Атака врагов ×1.5', foe: { atk: 1.5 } },
+  { id: 'blind',  name: 'Слепота',          emoji: '🕶️', desc: 'Критов и уклонения нет', hero: { noCrit: true, noDodge: true } },
+  { id: 'giants', name: 'Гиганты',          emoji: '🗿', desc: 'HP врагов ×2', foe: { hp: 2 } },
+  { id: 'frail',  name: 'Хрупкая броня',    emoji: '🪟', desc: 'Защита героя ×0.4', hero: { def: 0.4 } },
+  { id: 'tank',   name: 'Несокрушимый',     emoji: '🛡️', desc: 'HP героя ×2, атака ×0.6', hero: { hp: 2, atk: 0.6 } },
+];
+export function dailyModFor(dateKey: string): DailyMod {
+  let h = 0;
+  for (const c of dateKey) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return DAILY_MODS[h % DAILY_MODS.length];
+}
+export const DAILY_CHALLENGE = { foes: 10 };
+export function dailyFoe(i: number, maxFloor: number): Monster {
+  const boss = i === DAILY_CHALLENGE.foes;
+  const f = Math.max(3, Math.round(maxFloor * 0.75)) + i * 0.5;
+  const b = baseMonsterStats(f, boss ? STAGES_PER_FLOOR : 5, boss);
+  const base = boss ? BOSSES[Math.min(BOSSES.length - 1, Math.floor(f / 4))] : MONSTER_POOL[Math.min(MONSTER_POOL.length - 1, Math.floor(f / 2))];
+  return { name: base.name, emoji: base.emoji, hp: b.hp, atk: b.atk, def: b.def, gold: 0, xp: 0, isBoss: boss, isElite: false, tier: 5, element: ELEMENT_CYCLE[i % 3] };
+}
+export function dailyReward(cleared: number, rebirths: number): { souls: number; gems: number; stone: boolean } {
+  return {
+    souls: Math.round(cleared * (1 + Math.floor(rebirths / 2))),
+    gems: cleared >= DAILY_CHALLENGE.foes ? 3 : cleared >= 8 ? 2 : cleared >= 5 ? 1 : 0,
+    stone: cleared >= 3,
+  };
+}
+
+// ════════════════════════════════════════════════════════════════
+//  БЕСТИАРИЙ И КОЛЛЕКЦИЯ
+// ════════════════════════════════════════════════════════════════
+
+export interface BestiaryEntry { key: string; name: string; emoji: string; world: WorldId; boss: boolean }
+export const monsterKey = (world: WorldId, name: string) => `${world === 'hell' ? 'h' : 'd'}:${name}`;
+export function bestiaryList(): BestiaryEntry[] {
+  const out: BestiaryEntry[] = [];
+  for (const m of MONSTER_POOL) out.push({ key: monsterKey('dungeon', m.name), name: m.name, emoji: m.emoji, world: 'dungeon', boss: false });
+  for (const m of BOSSES) out.push({ key: monsterKey('dungeon', m.name), name: m.name, emoji: m.emoji, world: 'dungeon', boss: true });
+  for (const m of HELL_MONSTERS) out.push({ key: monsterKey('hell', m.name), name: m.name, emoji: m.emoji, world: 'hell', boss: false });
+  for (const m of HELL_BOSSES) out.push({ key: monsterKey('hell', m.name), name: m.name, emoji: m.emoji, world: 'hell', boss: true });
+  return out;
+}
+export interface CollectionEntry { key: string; label: string; emoji: string; rarity?: Rarity }
+export const SLOT_NAME: Record<ItemSlot, string> = { weapon: 'Оружие', armor: 'Броня', amulet: 'Амулет' };
+export const SLOT_EMOJI: Record<ItemSlot, string> = { weapon: '⚔️', armor: '🛡️', amulet: '📿' };
+export function collectionList(): CollectionEntry[] {
+  const out: CollectionEntry[] = [];
+  const slots: ItemSlot[] = ['weapon', 'armor', 'amulet'];
+  for (const r of RARITY_ORDER) for (const sl of slots) out.push({ key: `item:${sl}:${r}`, label: `${SLOT_NAME[sl]} · ${RARITY_NAME[r]}`, emoji: SLOT_EMOJI[sl], rarity: r });
+  for (const st of SETS) for (const sl of slots) out.push({ key: `set:${st.id}:${sl}`, label: st.pieces[sl], emoji: st.emoji });
+  return out;
+}
+export const foundKeysOf = (item: Item): string[] => [`item:${item.slot}:${item.rarity}`, ...(item.set ? [`set:${item.set}:${item.slot}`] : [])];
+export const COLL = { perEntry: 0.25, perSecret: 2.5 };
+export const COLL_REWARDS: { pct: number; gems: number; souls: number; stone?: string }[] = [
+  { pct: 25,  gems: 1, souls: 3 },
+  { pct: 50,  gems: 2, souls: 8,  stone: 'topaz2' },
+  { pct: 75,  gems: 3, souls: 15, stone: 'ruby2' },
+  { pct: 100, gems: 6, souls: 40, stone: 'sapphire3' },
+];
+export function collectionProgress(m: Meta): { done: number; total: number; pct: number; bonus: number; monsters: number; monstersTotal: number } {
+  const ml = bestiaryList();
+  const cl = collectionList();
+  const mDone = ml.filter(e => (m.seen[e.key] ?? 0) > 0).length;
+  const found = new Set(m.found);
+  const cDone = cl.filter(e => found.has(e.key)).length;
+  const secret = cl.filter(e => e.rarity === 'secret' && found.has(e.key)).length;
+  const done = mDone + cDone;
+  const total = ml.length + cl.length;
+  return { done, total, pct: Math.floor((done / total) * 100), bonus: (done - secret) * COLL.perEntry + secret * COLL.perSecret, monsters: mDone, monstersTotal: ml.length };
+}

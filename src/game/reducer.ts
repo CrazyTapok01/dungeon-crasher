@@ -4,14 +4,17 @@ import type {
   SkillId, SkillLevels, UpgradeCounts, UpgradeKind,
 } from '../types';
 import {
-  ABILITIES, ACHIEVEMENTS, BOSS, DROP, ENRAGE, HEAL_ABILITY, INITIAL_HERO,
+  ABILITIES, ACHIEVEMENTS, BOSS, RARITY_ORDER, DROP, ENRAGE, HEAL_ABILITY, INITIAL_HERO,
   LEVEL_UP, LOG_LIMIT, OFFLINE, PERKS, POISON, PRESTIGE, RAGE, RARITY_NAME, REGEN_FRAC,
   SHIELD, SHOP_POTION, SHOP_UPGRADES, SKILLS, STAGES_PER_FLOOR, STRIKE, SWIFT_DODGE, THORNS_FRAC,
   TRAITS, abilityDef, abilityUnlocked, baseMonsterStats, biomeForFloor, chestCost, chestMinRarity,
   deathGoldKept, emptyCooldowns, emptyMeta, emptySkillLevels, emptyUpgradeCounts, generateItem,
   generateMonster, FARM, FARMS, HELL_REBIRTH, farmCost, farmPending, farmRate, hellRebirthCost, PET_REBIRTH, petAvailable, petRankOf, HELL_PACTS, SOUL_SHOP, altarCost, altarSouls, craftGoldCost, soulUpLevel, soulUpgradeCost, soulsAvailable, GEM, GEM_SHOP, HELL, PET_CRATES, PET_GEAR_MULT, PET_SLOTS, WORLDS, gemLevel, gemUpgradeCost, petCrateGoldCost, petGearMult, EGG, PET_MAX, PETS, TALENTS, TALENT_MAX, petDef, spentTalents, talentBonus, talentPoints, CLASSES, CLASS_BONUS, CRAFT_RECIPES, counterOf, craftItem, craftGroups, ENHANCE, dailyPreview, enhanceCost, enhanceChance, sellPrice, todayKey, inventoryLimit, RELICS, RELIC_DROP, RELIC_MAX, QUEST_INFO, fillQuests, questProgress, itemScore, junkItems, skillCost, skillMaxLevel, skillUnlocked,
   soulsForFloor, upgradeAmount, upgradeCost,
+  COLL_REWARDS, DAILY_CHALLENGE, STONE_DROP, STONE_SHOP, MAX_SOCKETS, TOWER, collectionProgress, dailyFoe, dailyModFor, dailyReward, foundKeysOf, monsterKey,
+  parseStone, randomStone, stoneKey, stoneName, stoneTierFor, towerBoss, towerKeysNow, towerMech, towerReward,
 } from '../gameData';
+import { simulateLadder, type LadderResult } from './ladder';
 import { computeStats, type Extras } from './stats';
 import { applyXp, rollHeroAttack, rollMonsterAttack } from './combat';
 import { loadGame, type SaveData } from './save';
@@ -58,6 +61,7 @@ export interface GameState {
   showFloorBanner: boolean;
   offlineReport: OfflineReport | null;
   chestResult: Item | null; // что выпало из последнего сундука
+  ladder: LadderResult | null; // итог последнего забега по Башне или ежедневному испытанию
 }
 
 export type Action =
@@ -93,6 +97,15 @@ export type Action =
   | { type: 'SET_ELEMENT'; element: Element }
   | { type: 'SET_AUTO_ELEMENT'; value: boolean }
   | { type: 'CRAFT'; slot: ItemSlot; from: Rarity }
+  | { type: 'TOWER_RUN' }
+  | { type: 'DAILY_RUN' }
+  | { type: 'CLOSE_LADDER' }
+  | { type: 'BUY_STONE' }
+  | { type: 'MERGE_STONE'; key: string }
+  | { type: 'SOCKET'; itemId: string; key: string }
+  | { type: 'UNSOCKET'; itemId: string }
+  | { type: 'ADD_SOCKET'; itemId: string }
+  | { type: 'CLAIM_COLL'; pct: number }
   | { type: 'REBIRTH' }
   | { type: 'OFFLINE'; seconds: number }       // игрока не было seconds секунд
   | { type: 'DISMISS_OFFLINE' }
@@ -116,6 +129,7 @@ export const extrasOf = (s: Pick<GameState, 'heroClass' | 'talents' | 'meta' | '
   soulUps: s.meta.soulUps,
   pacts: s.world === 'hell' ? s.meta.pacts : {},
   hellRebirths: s.world === 'hell' ? s.meta.hellRebirths : -1,
+  collPct: collectionProgress(s.meta).bonus,
   pet: s.meta.activePet && s.meta.pets[s.meta.activePet] > 0 && petAvailable(s.meta, s.meta.activePet)
     ? { id: s.meta.activePet, level: s.meta.pets[s.meta.activePet] * petRankOf(s.meta, s.meta.activePet) } : null,
 });
@@ -197,7 +211,8 @@ function s0Element(s: GameState, m: Monster): Element {
 }
 
 function createState(save: SaveData | null): GameState {
-  const meta = save?.meta ?? emptyMeta();
+  const meta0 = save?.meta ?? emptyMeta();
+  const meta = meta0.run.start > 0 ? meta0 : { ...meta0, run: { ...meta0.run, start: Date.now() } };
   const hero = save?.hero ?? INITIAL_HERO;
   const world: WorldId = save?.world ?? 'dungeon';
   const monster = generateMonster(hero.floor, hero.stage, world);
@@ -228,6 +243,7 @@ function createState(save: SaveData | null): GameState {
     showFloorBanner: false,
     offlineReport: null,
     chestResult: null,
+    ladder: null,
   };
 
   // Если сохранились на нуле HP — стартуем хотя бы с 1 HP
@@ -368,6 +384,7 @@ function hitMonster(
   const { monster } = state;
   let s: GameState = { ...state, monsterHp: Math.max(0, state.monsterHp - roll.dmg) };
   s = emit(s, { type: 'hero_attack', dmg: roll.dmg, crit: roll.crit, heavy });
+  if (s.world === 'dungeon' && roll.dmg > s.meta.run.bestHit) s = { ...s, meta: { ...s.meta, run: { ...s.meta.run, bestHit: roll.dmg } } };
   if (roll.crit) s = { ...s, meta: { ...s.meta, crits: s.meta.crits + 1 } };
   s = roll.crit
     ? withLog(s, `💥 КРИТ! ${monster.name} получает ${roll.dmg} урона!`, 'crit')
@@ -512,6 +529,11 @@ function defeatMonster(state: GameState): GameState {
       elites: s.meta.elites + (monster.isElite ? 1 : 0),
     },
   };
+  {
+    const mk = monsterKey(s.world, monster.name);
+    const run = s.world === 'dungeon' ? { ...s.meta.run, kills: s.meta.run.kills + 1, gold: s.meta.run.gold + gold, bosses: s.meta.run.bosses + (monster.isBoss ? 1 : 0) } : s.meta.run;
+    s = { ...s, meta: { ...s.meta, seen: { ...s.meta.seen, [mk]: (s.meta.seen[mk] ?? 0) + 1 }, run } };
+  }
   s = withLog(s, `💰 +${gold} золота, +${xp} опыта`, 'loot');
   if (monster.goblin) s = withLog(s, '👺 Гоблин-казначей выронил мешок с золотом!', 'loot');
   s = emit(s, { type: 'monster_killed', emoji: monster.emoji, boss: monster.isBoss, elite: monster.isElite, gold, xp });
@@ -538,6 +560,13 @@ function defeatMonster(state: GameState): GameState {
     const hell = s.world === 'hell';
     const chance = (hell ? HELL.gemBossChance : s.hero.floor >= GEM.minBossFloor ? GEM.bossChance : 0) * luck(s) * (1 + (s.meta.farms.focus ?? 0) * 0.1);
     if (Math.random() < chance) s = addGems(s, 1, 'босс');
+  }
+
+  // 3а-2. камень для гнёзд: с боссов (в Преисподней — щедрее) и редко с элиты Преисподней
+  {
+    const hell = s.world === 'hell';
+    const ch = monster.isBoss ? (hell ? STONE_DROP.hellBoss : s.hero.floor >= 10 ? STONE_DROP.dungeonBoss : 0) : monster.isElite && hell ? STONE_DROP.hellElite : 0;
+    if (ch > 0 && Math.random() < ch * luck(s)) s = addStone(s, randomStone(stoneTierFor(s.hero.floor, s.world)), 1);
   }
 
   // 3а. яйцо питомца: с босса, потом греется убийствами
@@ -579,6 +608,18 @@ function defeatMonster(state: GameState): GameState {
 
 /** Бонус «Печати удачи» к шансам реликвий и яиц. */
 const luck = (s: GameState): number => 1 + gemLevel(s.meta.gemUps, 'luck') * 0.1;
+
+function addStone(s: GameState, key: string, n: number): GameState {
+  s = { ...s, meta: { ...s.meta, stones: { ...s.meta.stones, [key]: (s.meta.stones[key] ?? 0) + n } } };
+  return emit(withLog(s, `💠 Найден камень: ${stoneName(key)}`, 'boss'), { type: 'quest', text: `💠 ${stoneName(key)}` });
+}
+
+/** Запоминает находку в коллекции. */
+function noteFound(s: GameState, item: Item): GameState {
+  const add = foundKeysOf(item).filter(k => !s.meta.found.includes(k));
+  if (add.length === 0) return s;
+  return { ...s, meta: { ...s.meta, found: [...s.meta.found, ...add] } };
+}
 
 function addGems(s: GameState, n: number, why: string): GameState {
   s = { ...s, meta: { ...s.meta, gems: s.meta.gems + n } };
@@ -644,6 +685,13 @@ function dropItem(s: GameState, item: Item): GameState {
   const label = `${item.emoji} ${item.name} (${RARITY_NAME[item.rarity]})`;
   const meta = item.rarity === 'legendary' || item.rarity === 'divine' ? { ...s.meta, legendaries: s.meta.legendaries + 1 } : s.meta;
   s = emit({ ...s, meta }, { type: 'loot', rarity: item.rarity });
+  s = noteFound(s, item);
+  if (s.world === 'dungeon') {
+    const b = s.meta.run.best;
+    if (!b || RARITY_ORDER.indexOf(item.rarity) > RARITY_ORDER.indexOf(b.rarity) || (item.rarity === b.rarity && item.price > b.price)) {
+      s = { ...s, meta: { ...s.meta, run: { ...s.meta.run, best: { name: item.name, emoji: item.emoji, rarity: item.rarity, price: item.price } } } };
+    }
+  }
   if (item.rarity === 'secret') s = emit(s, { type: 'quest', text: `✨ ??? SECRET: ${item.name}!!!` });
   // авто-продажа: выбранное качество и не лучше надетого в этом слоте
   const worn = s.equipped[item.slot];
@@ -802,7 +850,7 @@ function reduce(state: GameState, action: Action): GameState {
         return emit(emit(withLog(s, txt, 'loot'), { type: 'ui', kind: 'fail' }), { type: 'quest', text: txt });
       }
       const result = craftItem(mats, rec.to);
-      const s = { ...paid, inventory: [result, ...state.inventory.filter(i => !ids.has(i.id))] };
+      const s = noteFound({ ...paid, inventory: [result, ...state.inventory.filter(i => !ids.has(i.id))] }, result);
       const done = emit(withLog(s, `🔨 Создано: ${result.name} (${RARITY_NAME[rec.to]})`, 'loot'), { type: 'loot', rarity: rec.to });
       return rec.to === 'legendary' || rec.to === 'divine' ? emit(done, { type: 'quest', text: `🔨 ${RARITY_NAME[rec.to]}: ${result.name}!` }) : done;
     }
@@ -1041,7 +1089,7 @@ function reduce(state: GameState, action: Action): GameState {
       const { floor } = state.hero;
       const gain = Math.floor(soulsForFloor(floor, state.meta.rebirths) * (1 + gemLevel(state.meta.gemUps, 'souls') * 0.1));
       if (gain <= 0) return state;
-      const meta: Meta = { ...state.meta, souls: state.meta.souls + gain, rebirths: state.meta.rebirths + 1 };
+      const meta: Meta = { ...state.meta, souls: state.meta.souls + gain, rebirths: state.meta.rebirths + 1, run: { start: Date.now(), kills: 0, gold: 0, bosses: 0, bestHit: 0, best: null } };
       let s = createState({
         hero: startHero(meta),
         skillLevels: emptySkillLevels(),
@@ -1061,6 +1109,122 @@ function reduce(state: GameState, action: Action): GameState {
         s = emit(s, { type: 'perk', key: perk.id });
       }
       return s;
+    }
+
+    case 'CLOSE_LADDER':
+      return { ...state, ladder: null };
+
+    case 'TOWER_RUN': {
+      if (state.world !== 'dungeon' || state.isDead) return state;
+      const now = Date.now();
+      const { keys } = towerKeysNow(state.meta, now);
+      if (keys <= 0) return state;
+      const stats = statsOf(state);
+      const best = state.meta.tower.best;
+      const { steps, cleared } = simulateLadder({
+        stats, element: state.heroElement, count: 200, healFrac: TOWER.heal,
+        foe: i => towerBoss(i, state.meta.maxFloor),
+        mech: i => towerMech(i).id,
+      });
+      let meta: Meta = { ...state.meta, tower: { best: Math.max(best, cleared), keys: keys - 1, at: keys >= TOWER.maxKeys ? now : state.meta.tower.at + Math.floor((now - state.meta.tower.at) / TOWER.keyMs) * TOWER.keyMs } };
+      const lines: string[] = [];
+      let souls = 0, gems = 0;
+      for (let n = best + 1; n <= cleared; n++) {
+        const r = towerReward(n);
+        souls += r.souls; gems += r.gems;
+        if (r.stoneTier) { const k = randomStone(r.stoneTier); meta = { ...meta, stones: { ...meta.stones, [k]: (meta.stones[k] ?? 0) + 1 } }; lines.push(`Ярус ${n}: ${stoneName(k)}`); }
+      }
+      meta = { ...meta, souls: meta.souls + souls, gems: meta.gems + gems };
+      if (souls) lines.unshift(`👻 +${souls} душ за новые ярусы`);
+      if (gems) lines.unshift(`💎 +${gems} кристаллов`);
+      if (cleared <= best) lines.push('Рекорд не побит — награды за повторные ярусы нет. Усиль героя и приходи снова.');
+      const s = { ...fresh, meta, ladder: { kind: 'tower' as const, steps, cleared, lines } };
+      return emit(withLog(s, `🗼 Башня: пройдено ярусов ${cleared} (рекорд ${meta.tower.best})`, 'boss'), { type: 'ui', kind: cleared > best ? 'buy' : 'fail' });
+    }
+
+    case 'DAILY_RUN': {
+      if (state.world !== 'dungeon' || state.isDead) return state;
+      const day = todayKey();
+      if (state.meta.challenge.last === day) return state;
+      const mod = dailyModFor(day);
+      const base = statsOf(state);
+      const h = mod.hero ?? {};
+      const stats = {
+        ...base,
+        atk: Math.round(base.atk * (h.atk ?? 1)), def: Math.round(base.def * (h.def ?? 1)), maxHp: Math.round(base.maxHp * (h.hp ?? 1)),
+        critChance: h.noCrit ? 0 : base.critChance, dodge: h.noDodge ? 0 : base.dodge,
+      };
+      const { steps, cleared } = simulateLadder({
+        stats, element: state.heroElement, count: DAILY_CHALLENGE.foes, healFrac: 0,
+        foe: i => dailyFoe(i, state.meta.maxFloor), heroDot: h.dot, foeMul: mod.foe,
+      });
+      const r = dailyReward(cleared, state.meta.rebirths);
+      let meta: Meta = { ...state.meta, challenge: { last: day, score: cleared }, souls: state.meta.souls + r.souls, gems: state.meta.gems + r.gems };
+      const lines: string[] = [];
+      if (r.souls) lines.push(`👻 +${r.souls} душ`);
+      if (r.gems) lines.push(`💎 +${r.gems} кристаллов`);
+      if (r.stone) { const k = randomStone(1 + (cleared >= 8 ? 1 : 0)); meta = { ...meta, stones: { ...meta.stones, [k]: (meta.stones[k] ?? 0) + 1 } }; lines.push(`💠 ${stoneName(k)}`); }
+      if (!lines.length) lines.push('Награды нет: нужно победить хотя бы 3 врагов.');
+      const s = { ...fresh, meta, ladder: { kind: 'daily' as const, steps, cleared, lines } };
+      return emit(withLog(s, `🎯 Ежедневное испытание: побеждено ${cleared}/${DAILY_CHALLENGE.foes}`, 'boss'), { type: 'ui', kind: 'buy' });
+    }
+
+    case 'BUY_STONE': {
+      if (state.meta.gems < STONE_SHOP.cost) return state;
+      const k = randomStone(1);
+      const meta = { ...state.meta, gems: state.meta.gems - STONE_SHOP.cost, stones: { ...state.meta.stones, [k]: (state.meta.stones[k] ?? 0) + 1 } };
+      return emit(withLog({ ...fresh, meta }, `💠 Куплен камень: ${stoneName(k)}`, 'loot'), { type: 'ui', kind: 'buy' });
+    }
+
+    case 'MERGE_STONE': {
+      const p = parseStone(action.key);
+      if (!p || p.tier >= 3 || (state.meta.stones[action.key] ?? 0) < STONE_SHOP.mergeNeed) return state;
+      const up = stoneKey(p.def.type, p.tier + 1);
+      const stones = { ...state.meta.stones, [action.key]: state.meta.stones[action.key] - STONE_SHOP.mergeNeed, [up]: (state.meta.stones[up] ?? 0) + 1 };
+      return emit(withLog({ ...fresh, meta: { ...state.meta, stones } }, `💠 Огранка: ${stoneName(up)}`, 'ability'), { type: 'ui', kind: 'buy' });
+    }
+
+    case 'SOCKET':
+    case 'UNSOCKET':
+    case 'ADD_SOCKET': {
+      const find = (): { item: Item; worn: boolean } | null => {
+        const w = (Object.values(state.equipped) as (Item | undefined)[]).find(i => i?.id === action.itemId);
+        if (w) return { item: w, worn: true };
+        const i = state.inventory.find(x => x.id === action.itemId);
+        return i ? { item: i, worn: false } : null;
+      };
+      const f = find();
+      if (!f) return state;
+      const it = f.item;
+      let next: Item = it;
+      let meta = state.meta;
+      if (action.type === 'SOCKET') {
+        if (!parseStone(action.key) || (meta.stones[action.key] ?? 0) < 1 || (it.stones?.length ?? 0) >= (it.sockets ?? 0)) return state;
+        next = { ...it, stones: [...(it.stones ?? []), action.key] };
+        meta = { ...meta, stones: { ...meta.stones, [action.key]: meta.stones[action.key] - 1 } };
+      } else if (action.type === 'UNSOCKET') {
+        if (!it.stones?.length) return state;
+        const back = { ...meta.stones };
+        for (const k of it.stones) back[k] = (back[k] ?? 0) + 1;
+        meta = { ...meta, stones: back };
+        next = { ...it, stones: [] };
+      } else {
+        if ((it.sockets ?? 0) >= MAX_SOCKETS || meta.gems < STONE_SHOP.socketCost) return state;
+        next = { ...it, sockets: (it.sockets ?? 0) + 1 };
+        meta = { ...meta, gems: meta.gems - STONE_SHOP.socketCost };
+      }
+      const s = f.worn
+        ? { ...fresh, meta, equipped: { ...state.equipped, [it.slot]: next } }
+        : { ...fresh, meta, inventory: state.inventory.map(i => (i.id === it.id ? next : i)) };
+      return emit(s, { type: 'ui', kind: 'equip' });
+    }
+
+    case 'CLAIM_COLL': {
+      const r = COLL_REWARDS.find(x => x.pct === action.pct);
+      if (!r || state.meta.collClaimed.includes(r.pct) || collectionProgress(state.meta).pct < r.pct) return state;
+      let s: GameState = { ...fresh, meta: { ...state.meta, collClaimed: [...state.meta.collClaimed, r.pct], gems: state.meta.gems + r.gems, souls: state.meta.souls + r.souls } };
+      if (r.stone) s = addStone(s, r.stone, 1);
+      return emit(withLog(s, `📖 Коллекция ${r.pct}%: +${r.gems} 💎, +${r.souls} 👻`, 'boss'), { type: 'quest', text: `📖 Коллекция ${r.pct}%! +${r.gems} 💎 +${r.souls} 👻` });
     }
 
     case 'OFFLINE':

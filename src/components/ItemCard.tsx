@@ -1,7 +1,7 @@
 import type { Item } from '../types';
 import { useFmt } from '../game/num';
 import { useCoin, useFloor } from './coin';
-import { ENHANCE, RARITY_COLORS, RARITY_NAME, enhanceChance, enhanceCost, enhanced, itemScore, sellPrice } from '../gameData';
+import { ENHANCE, parseStone, setDef, stoneDesc, setBonusText, RARITY_COLORS, RARITY_NAME, enhanceChance, enhanceCost, enhanced, itemScore, sellPrice } from '../gameData';
 
 interface Props {
   item: Item;
@@ -52,6 +52,13 @@ export default function ItemCard({ item: raw, compareTo, equipped, onEquip, onSe
           <div className={`font-bold text-sm ${c.text} truncate`}>{item.name}{plus > 0 && <span className="text-amber-300"> +{plus}</span>}</div>
           <div className={`text-[10px] uppercase tracking-wide ${c.text} opacity-80`}>{RARITY_NAME[item.rarity]}</div>
           <Stats item={item} />
+          {item.set && (() => { const d = setDef(item.set); return d ? <div className="text-[10px] text-amber-300 mt-0.5 leading-tight">{d.emoji} Набор «{d.name}»: 2 — {setBonusText(d.two)}; 3 — {setBonusText(d.three)}</div> : null; })()}
+          {(item.sockets ?? 0) > 0 && (
+            <div className="flex items-center gap-1 mt-0.5 text-[10px] text-cyan-200">
+              {Array.from({ length: item.sockets ?? 0 }, (_, i) => <span key={i} className="w-4 h-4 rounded-full bg-black/50 border border-cyan-700/60 flex items-center justify-center">{item.stones?.[i] ? parseStone(item.stones[i])?.def.emoji : '◦'}</span>)}
+              {(item.stones?.length ?? 0) > 0 && <span className="truncate">{item.stones!.map(stoneDesc).join(' · ')}</span>}
+            </div>
+          )}
         </div>
       </div>
       {onEnhance && (
