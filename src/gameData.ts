@@ -944,6 +944,9 @@ export const HELL_PACTS: PactDef[] = [
   { id: 'dark',   emoji: '🌑', name: 'Договор тьмы',      desc: '+60% опыта, −20% к здоровью',           xp: 60, hp: -20 },
   { id: 'iron',   emoji: '⛓️', name: 'Железный договор',  desc: '+50% к защите и +20% к здоровью, −30% углей', def: 50, hp: 20, gold: -30 },
 ];
+/** Сколько договоров можно держать одновременно: 1, плюс ещё один за каждые 3 перерождения Охотника. */
+export const pactSlots = (hellRebirths: number): number => 1 + Math.floor(hellRebirths / 3);
+export const activePacts = (pacts: Record<string, boolean>): string[] => HELL_PACTS.filter(p => pacts[p.id]).map(p => p.id);
 export const pactTotals = (pacts: Record<string, boolean>) => {
   const t = { atk: 0, hp: 0, def: 0, gold: 0, xp: 0 };
   for (const p of HELL_PACTS) if (pacts[p.id]) { t.atk += p.atk ?? 0; t.hp += p.hp ?? 0; t.def += p.def ?? 0; t.gold += p.gold ?? 0; t.xp += p.xp ?? 0; }

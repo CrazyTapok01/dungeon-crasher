@@ -4,7 +4,7 @@ import type {
   SkillId, SkillLevels, UpgradeCounts, UpgradeKind,
 } from '../types';
 import {
-  ABILITIES, ACHIEVEMENTS, BOSS, RARITY_ORDER, DROP, ENRAGE, HEAL_ABILITY, INITIAL_HERO,
+  ABILITIES, ACHIEVEMENTS, BOSS, RARITY_ORDER, activePacts, pactSlots, DROP, ENRAGE, HEAL_ABILITY, INITIAL_HERO,
   LEVEL_UP, LOG_LIMIT, OFFLINE, PERKS, POISON, PRESTIGE, RAGE, RARITY_NAME, REGEN_FRAC,
   SHIELD, SHOP_POTION, SHOP_UPGRADES, SKILLS, STAGES_PER_FLOOR, STRIKE, SWIFT_DODGE, THORNS_FRAC,
   TRAITS, abilityDef, abilityUnlocked, baseMonsterStats, biomeForFloor, chestCost, chestMinRarity,
@@ -1217,7 +1217,7 @@ function reduce(state: GameState, action: Action): GameState {
         world: 'hell',
         offRun: fresh0,
       });
-      const txt = `🔥 Перерождение в Преисподней #${n + 1}: все характеристики ×${n + 2}`;
+      const txt = `🔥 Перерождение в Преисподней #${n + 1}: атака, здоровье, защита ×${n + 2}, крит +${n + 1}%, крит. урон +${(n + 1) * 25}%`;
       s = withLog(s, txt, 'boss');
       return emit(emit(s, { type: 'rebirth', souls: 0 }), { type: 'quest', text: txt });
     }
@@ -1260,7 +1260,14 @@ function reduce(state: GameState, action: Action): GameState {
 
     case 'TOGGLE_PACT': {
       if (state.world !== 'hell' || !HELL_PACTS.some(p => p.id === action.id)) return state;
-      const meta = { ...state.meta, pacts: { ...state.meta.pacts, [action.id]: !state.meta.pacts[action.id] } };
+      const on = !!state.meta.pacts[action.id];
+      const slots = pactSlots(state.meta.hellRebirths);
+      let pacts = { ...state.meta.pacts, [action.id]: !on };
+      if (!on && activePacts(state.meta.pacts).length >= slots) {
+        if (slots > 1) return emit(withLog(fresh, '📜 Нет свободных слотов договоров — расторгни один из действующих', 'info'), { type: 'quest', text: '📜 Нет свободных слотов договоров' });
+        pacts = { [action.id]: true }; // единственный слот: новый договор заменяет прежний
+      }
+      const meta = { ...state.meta, pacts };
       const s = clampHp({ ...fresh, meta });
       return emit(withLog(s, `${HELL_PACTS.find(p => p.id === action.id)!.emoji} Договор ${meta.pacts[action.id] ? 'заключён' : 'расторгнут'}`, 'ability'), { type: 'ui', kind: 'equip' });
     }

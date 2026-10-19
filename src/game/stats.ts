@@ -53,8 +53,8 @@ export function computeStats(
     def: Math.round((hero.baseDef + (armor?.def ?? 0) + (amulet?.def ?? 0) + levels.armor * SKILL_BONUS.armor + rl('scale') * 2)
       * (1 + tb('def') / 100) * (1 + su('def', 0.02) + pt.def / 100) * hm * (1 + (x('def') + worldPct.def) / 100) * (cls === 'warrior' ? CLASS_BONUS.warriorDef : cls === 'thief' ? CLASS_BONUS.thiefDef : 1)),
     maxHp: Math.round(maxHp * mult * (1 + rl('heart') * 0.04) * (1 + tb('hp') / 100) * (1 + gem('hp', 0.2) + heart) * (1 + su('hp', 0.03) + pt.hp / 100) * hm * (1 + (x('hp') + collPct + worldPct.hp) / 100) * (cls === 'warrior' ? CLASS_BONUS.warriorHp : cls === 'mage' ? CLASS_BONUS.mageHp : 1)),
-    critChance: Math.min(STAT_CAPS.critChance, BASE_STATS.critChance + levels.crit * SKILL_BONUS.crit + sum('crit') + x('crit') + rl('eye') + tb('crit')),
-    critDmg: BASE_STATS.critDmg + levels.critdmg * SKILL_BONUS.critdmg + sum('critdmg') + x('critdmg') + (cls === 'mage' ? CLASS_BONUS.mageCritDmg : 0) + tb('critdmg'),
+    critChance: Math.min(STAT_CAPS.critChance, BASE_STATS.critChance + (hm - 1) * 1 + levels.crit * SKILL_BONUS.crit + sum('crit') + x('crit') + rl('eye') + tb('crit')),
+    critDmg: BASE_STATS.critDmg + (hm - 1) * 25 + levels.critdmg * SKILL_BONUS.critdmg + sum('critdmg') + x('critdmg') + (cls === 'mage' ? CLASS_BONUS.mageCritDmg : 0) + tb('critdmg'),
     dodge: Math.min(STAT_CAPS.dodge, BASE_STATS.dodge + levels.dodge * SKILL_BONUS.dodge + sum('dodge') + x('dodge') + rl('wind') * 0.5 + (cls === 'thief' ? CLASS_BONUS.thiefDodge : 0) + tb('dodge')),
     lifesteal: BASE_STATS.lifesteal + levels.vamp * SKILL_BONUS.vamp + sum('vamp') + x('vamp') + rl('blood') * 0.4,
     regen: (levels.regen * SKILL_BONUS.regen + tb('regen') + su('regen', 1)) * hm,

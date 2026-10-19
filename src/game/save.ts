@@ -4,7 +4,7 @@ import type {
 import { GOODS, ISLANDS, MISSIONS, RESEARCH, SHIP_MAX, SHIP_PARTS, buildingDef, emptyCity, emptySea, hullMax } from './worldsData';
 import {
   ACHIEVEMENTS, INITIAL_HERO, QUEST_INFO, RARITY_NAME, RELICS, RELIC_MAX, SKILLS, HELL_PACTS, SOUL_SHOP, FARMS,
-  STAGES_PER_FLOOR, GEM_SHOP, TOWER, parseStone, AUTO_ENHANCE_STEPS, AUTO_CRAFT_STEPS, PETS, PET_MAX, TALENTS, emptyPets, emptyMeta, emptyRelics, emptySkillLevels, fillQuests,
+  STAGES_PER_FLOOR, GEM_SHOP, TOWER, parseStone, AUTO_ENHANCE_STEPS, AUTO_CRAFT_STEPS, pactSlots, PETS, PET_MAX, TALENTS, emptyPets, emptyMeta, emptyRelics, emptySkillLevels, fillQuests,
 } from '../gameData';
 
 const SAVE_KEY = 'dungeonCrasherSave_v3';
@@ -139,6 +139,8 @@ function sanitizeMeta(raw: unknown, hero: HeroState): Meta {
       streak: num(asRecord(r.daily).streak),
     },
   };
+  const act = HELL_PACTS.map(p => p.id).filter(id => meta.pacts[id]);
+  if (act.length > pactSlots(meta.hellRebirths)) meta.pacts = Object.fromEntries(act.slice(0, pactSlots(meta.hellRebirths)).map(id => [id, true]));
   return fillQuests(meta);
 }
 
