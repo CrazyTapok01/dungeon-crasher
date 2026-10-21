@@ -958,6 +958,8 @@ export const HELL_REBIRTH = { baseCost: 20, minFloor: 20 };
 export const hellRebirthCost = (n: number): number => HELL_REBIRTH.baseCost * (n + 1);
 /** 0 перерождений — ×1, 1 — ×2, 2 — ×3… */
 export const hellMult = (n: number): number => 1 + n;
+/** Множитель силы Охотника: каждое перерождение умножает характеристики ×3 (монстры растут по экспоненте, линейный множитель не помогал). */
+export const hellPower = (n: number): number => Math.pow(3, n);
 
 /** Кристальные фермы: открываются с рекорда 150-го этажа Преисподней, улучшаются углями, дают кристаллы со временем. */
 export const FARM = { unlockFloor: 150, capHours: 12 };

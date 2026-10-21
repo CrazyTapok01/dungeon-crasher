@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import type { Meta, WorldId } from '../types';
-import { FARM, FARMS, HELL_PACTS, pactSlots, HELL_REBIRTH, altarCost, altarSouls, farmCost, farmPending, farmRate, hellAffix, hellMult, hellRebirthCost } from '../gameData';
+import { FARM, FARMS, HELL_PACTS, pactSlots, HELL_REBIRTH, altarCost, altarSouls, farmCost, farmPending, farmRate, hellAffix, hellMult, hellPower, hellRebirthCost } from '../gameData';
 import { useNow } from './useNow';
 import { useFmt } from '../game/num';
 
@@ -36,7 +36,7 @@ function HellPanel({ meta, world, coals, floor, onPact, onAltar, onHellRebirth, 
       <div className="rounded-lg bg-gradient-to-br from-red-950/70 to-black/50 border border-orange-500/60 p-2 mb-3">
         <h3 className="text-sm font-black text-orange-200 text-center">🔥 Перерождение Охотника</h3>
         <p className="text-[11px] text-orange-100/80 text-center leading-snug my-1">
-          Сбрасывает забег Преисподней (этаж, угли, навыки, вещи). Навсегда даёт ×{hellMult(meta.hellRebirths + 1)} к атаке, здоровью, защите и регенерации, +{(hellMult(meta.hellRebirths + 1) - 1) * 100}% к золоту/опыту, +{hellMult(meta.hellRebirths + 1) - 1}% к шансу крита и +{(hellMult(meta.hellRebirths + 1) - 1) * 25}% к крит. урону (сейчас ×{hellMult(meta.hellRebirths)}). Множитель действует только в Преисподней и стартует с нуля: сброшенные навыки и вещи надо набрать заново.
+          Сбрасывает забег Преисподней (этаж, угли, навыки, вещи). Навсегда умножает ×3 (всего будет ×{hellPower(meta.hellRebirths + 1).toFixed(1)}, сейчас ×{hellPower(meta.hellRebirths).toFixed(1)}) атаку, здоровье, защиту и регенерацию, +{(hellMult(meta.hellRebirths + 1) - 1) * 100}% к золоту/опыту, +{hellMult(meta.hellRebirths + 1) - 1}% к шансу крита и +{(hellMult(meta.hellRebirths + 1) - 1) * 25}% к крит. урону Множитель действует только в Преисподней и стартует с нуля: сброшенные навыки и вещи надо набрать заново.
           Следующее перерождение дороже: 20, 40, 60… 💎. Нужен этаж {HELL_REBIRTH.minFloor}+. Совершено: {meta.hellRebirths}.
         </p>
         <button disabled={!inHell || floor < HELL_REBIRTH.minFloor || meta.gems < rebirthCost} onClick={onHellRebirth} className="btn-purple w-full py-2.5 rounded-xl text-sm font-black disabled:opacity-50">

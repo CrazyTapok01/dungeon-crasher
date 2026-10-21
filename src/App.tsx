@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useGame } from './hooks/useGame';
-import { WORLDS, hellMult, hellRebirthCost, ACHIEVEMENTS, PERKS, PRESTIGE, RELICS, dailyPreview, spentTalents, talentPoints, SKILLS, inventoryLimit, itemScore, skillCost, soulsForFloor } from './gameData';
+import { WORLDS, hellPower, hellRebirthCost, ACHIEVEMENTS, PERKS, PRESTIGE, RELICS, dailyPreview, spentTalents, talentPoints, SKILLS, inventoryLimit, itemScore, skillCost, soulsForFloor } from './gameData';
 import { isMuted, play, setMuted, unlockAudio } from './game/audio';
 import BattleScene from './components/BattleScene';
 import AbilityBar from './components/AbilityBar';
@@ -223,7 +223,7 @@ export default function App() {
       {confirm === 'hell' && (
         <ConfirmModal
           title="🔥 Переродиться в Преисподней?"
-          text={`Это стоит ${hellRebirthCost(state.meta.hellRebirths)} 💎. Этаж, угли, навыки и вещи Охотника сбросятся, но все его характеристики навсегда станут ×${hellMult(state.meta.hellRebirths + 1)}.`}
+          text={`Это стоит ${hellRebirthCost(state.meta.hellRebirths)} 💎. Этаж, угли, навыки и вещи Охотника сбросятся, но все его характеристики навсегда станут ×${hellPower(state.meta.hellRebirths + 1).toFixed(1)}.`}
           confirmLabel="Переродиться"
           onCancel={() => setConfirm(null)}
           onConfirm={() => { setConfirm(null); setTab('combat'); game.hellRebirth(); }}

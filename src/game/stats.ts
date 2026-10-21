@@ -1,5 +1,5 @@
 import type { Equipment, HeroState, HeroStats, ClassId, PetId, RelicId, SkillLevels } from '../types';
-import { BASE_STATS, CLASS_BONUS, enhanced, hellMult, pactTotals, petBonus, PRESTIGE, SKILL_BONUS, STAT_CAPS, setTotals, soulMultiplier, stoneTotals, talentBonus } from '../gameData';
+import { BASE_STATS, CLASS_BONUS, enhanced, hellMult, hellPower, pactTotals, petBonus, PRESTIGE, SKILL_BONUS, STAT_CAPS, setTotals, soulMultiplier, stoneTotals, talentBonus } from '../gameData';
 
 /** Всё, что усиливает героя помимо навыков и вещей. */
 export interface Extras {
@@ -28,7 +28,8 @@ export function computeStats(
   const sb = setTotals(equipped);
   const st = stoneTotals(equipped);
   const x = (k: keyof typeof sb) => (sb[k] ?? 0) + (st[k] ?? 0);
-  const hm = hellRebirths >= 0 ? hellMult(hellRebirths) : 1;
+  const hm = hellRebirths >= 0 ? hellMult(hellRebirths) : 1;   // линейный: золото, опыт, крит
+  const hp = hellRebirths >= 0 ? hellPower(hellRebirths) : 1;  // степенной: атака, здоровье, защита, регенерация
   const su = (id: string, per: number) => (soulUps[id] ?? 0) * per;
   const pt = pactTotals(pacts);
   const tb = (k: Parameters<typeof talentBonus>[1]) => talentBonus(talents, k) + petBonus(pet, k) * petMult;
@@ -49,15 +50,15 @@ export function computeStats(
   const maxHp = hero.baseMaxHp + (armor?.hp ?? 0) + (amulet?.hp ?? 0) + levels.vitality * SKILL_BONUS.vitality;
 
   return {
-    atk: Math.round(atk * mult * (1 + (levels.fury * SKILL_BONUS.fury) / 100) * (1 + rl('fang') * 0.03) * (1 + tb('atk') / 100) * (1 + gem('atk', 0.2) + heart) * (1 + su('atk', 0.03) + pt.atk / 100) * hm * (1 + (x('atk') + collPct + worldPct.atk) / 100)),
+    atk: Math.round(atk * mult * (1 + (levels.fury * SKILL_BONUS.fury) / 100) * (1 + rl('fang') * 0.03) * (1 + tb('atk') / 100) * (1 + gem('atk', 0.2) + heart) * (1 + su('atk', 0.03) + pt.atk / 100) * hp * (1 + (x('atk') + collPct + worldPct.atk) / 100)),
     def: Math.round((hero.baseDef + (armor?.def ?? 0) + (amulet?.def ?? 0) + levels.armor * SKILL_BONUS.armor + rl('scale') * 2)
-      * (1 + tb('def') / 100) * (1 + su('def', 0.02) + pt.def / 100) * hm * (1 + (x('def') + worldPct.def) / 100) * (cls === 'warrior' ? CLASS_BONUS.warriorDef : cls === 'thief' ? CLASS_BONUS.thiefDef : 1)),
-    maxHp: Math.round(maxHp * mult * (1 + rl('heart') * 0.04) * (1 + tb('hp') / 100) * (1 + gem('hp', 0.2) + heart) * (1 + su('hp', 0.03) + pt.hp / 100) * hm * (1 + (x('hp') + collPct + worldPct.hp) / 100) * (cls === 'warrior' ? CLASS_BONUS.warriorHp : cls === 'mage' ? CLASS_BONUS.mageHp : 1)),
+      * (1 + tb('def') / 100) * (1 + su('def', 0.02) + pt.def / 100) * hp * (1 + (x('def') + worldPct.def) / 100) * (cls === 'warrior' ? CLASS_BONUS.warriorDef : cls === 'thief' ? CLASS_BONUS.thiefDef : 1)),
+    maxHp: Math.round(maxHp * mult * (1 + rl('heart') * 0.04) * (1 + tb('hp') / 100) * (1 + gem('hp', 0.2) + heart) * (1 + su('hp', 0.03) + pt.hp / 100) * hp * (1 + (x('hp') + collPct + worldPct.hp) / 100) * (cls === 'warrior' ? CLASS_BONUS.warriorHp : cls === 'mage' ? CLASS_BONUS.mageHp : 1)),
     critChance: Math.min(STAT_CAPS.critChance, BASE_STATS.critChance + (hm - 1) * 1 + levels.crit * SKILL_BONUS.crit + sum('crit') + x('crit') + rl('eye') + tb('crit')),
     critDmg: BASE_STATS.critDmg + (hm - 1) * 25 + levels.critdmg * SKILL_BONUS.critdmg + sum('critdmg') + x('critdmg') + (cls === 'mage' ? CLASS_BONUS.mageCritDmg : 0) + tb('critdmg'),
     dodge: Math.min(STAT_CAPS.dodge, BASE_STATS.dodge + levels.dodge * SKILL_BONUS.dodge + sum('dodge') + x('dodge') + rl('wind') * 0.5 + (cls === 'thief' ? CLASS_BONUS.thiefDodge : 0) + tb('dodge')),
     lifesteal: BASE_STATS.lifesteal + levels.vamp * SKILL_BONUS.vamp + sum('vamp') + x('vamp') + rl('blood') * 0.4,
-    regen: (levels.regen * SKILL_BONUS.regen + tb('regen') + su('regen', 1)) * hm,
+    regen: (levels.regen * SKILL_BONUS.regen + tb('regen') + su('regen', 1)) * hp,
     goldBonus: levels.fortune * SKILL_BONUS.fortune + Math.round(souls * PRESTIGE.goldPerSoul * 100) + rl('coin') * 4 + tb('gold') + gem('gold', 25) + su('gold', 4) + pt.gold + x('gold') + worldPct.gold + (hm - 1) * 100,
     xpBonus: levels.wisdom * SKILL_BONUS.wisdom + rl('tome') * 4 + tb('xp') + gem('xp', 25) + su('xp', 4) + pt.xp + x('xp') + worldPct.xp + (hm - 1) * 100,
   };

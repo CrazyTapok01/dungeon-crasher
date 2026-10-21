@@ -4,7 +4,7 @@ import type {
   SkillId, SkillLevels, UpgradeCounts, UpgradeKind,
 } from '../types';
 import {
-  ABILITIES, ACHIEVEMENTS, BOSS, RARITY_ORDER, activePacts, pactSlots, DROP, ENRAGE, HEAL_ABILITY, INITIAL_HERO,
+  ABILITIES, ACHIEVEMENTS, BOSS, RARITY_ORDER, activePacts, pactSlots, hellPower, DROP, ENRAGE, HEAL_ABILITY, INITIAL_HERO,
   LEVEL_UP, LOG_LIMIT, OFFLINE, PERKS, POISON, PRESTIGE, RAGE, RARITY_NAME, REGEN_FRAC,
   SHIELD, SHOP_POTION, SHOP_UPGRADES, SKILLS, STAGES_PER_FLOOR, STRIKE, SWIFT_DODGE, THORNS_FRAC,
   TRAITS, abilityDef, abilityUnlocked, baseMonsterStats, biomeForFloor, chestCost, chestMinRarity,
@@ -1217,7 +1217,7 @@ function reduce(state: GameState, action: Action): GameState {
         world: 'hell',
         offRun: fresh0,
       });
-      const txt = `🔥 Перерождение в Преисподней #${n + 1}: атака, здоровье, защита ×${n + 2}, крит +${n + 1}%, крит. урон +${(n + 1) * 25}%`;
+      const txt = `🔥 Перерождение в Преисподней #${n + 1}: атака, здоровье, защита ×${hellPower(n + 1).toFixed(1)}, крит +${n + 1}%, крит. урон +${(n + 1) * 25}%`;
       s = withLog(s, txt, 'boss');
       return emit(emit(s, { type: 'rebirth', souls: 0 }), { type: 'quest', text: txt });
     }
